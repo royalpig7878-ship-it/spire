@@ -6,38 +6,20 @@
 
 import { roundedRectPath } from './facilities.js';
 import { mixToHex } from './color.js';
+import { drawFigure, MOOD_COLORS, moodOfStress } from './figures.js';
 
-const MOOD_COLORS = { calm: '#4a90d9', impatient: '#f0a830', stressed: '#e0503c' };
-
-function moodOf(waitedSec, ec) {
-  if (waitedSec >= ec.stressedAfterSec) return 'stressed';
-  if (waitedSec >= ec.impatientAfterSec) return 'impatient';
+// Mood of a rider: real tenants use their stress; demo riders (no tenant)
+// use how long they have waited.
+function riderMood(r, config) {
+  if (r.tenant) return moodOfStress(r.tenant.stress, config.tenants.stress);
+  const ec = config.elevators;
+  if (r.waited >= ec.stressedAfterSec) return 'stressed';
+  if (r.waited >= ec.impatientAfterSec) return 'impatient';
   return 'calm';
 }
 
-// A tiny stylized person: round head, simple body. Not-calm moods also get
-// a "!" bubble so mood never depends on color alone.
-function drawFigure(ctx, cx, baseY, size, color, mood) {
-  ctx.fillStyle = color;
-  roundedRectPath(ctx, cx - size * 0.17, baseY - size * 0.56, size * 0.34, size * 0.56, size * 0.1);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(cx, baseY - size * 0.72, size * 0.17, 0, Math.PI * 2);
-  ctx.fill();
-  if (mood !== 'calm' && size > 9) {
-    const r = size * 0.14;
-    const by = baseY - size * 1.05;
-    ctx.fillStyle = '#ffffff';
-    ctx.beginPath();
-    ctx.arc(cx, by, r * 1.5, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = mood === 'stressed' ? '#c0392b' : '#b9770e';
-    ctx.font = `700 ${Math.max(7, r * 2.4)}px system-ui, sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(mood === 'stressed' ? '!!' : '!', cx, by + r * 0.1);
-    ctx.textAlign = 'start';
-  }
+function riderHead(r, config) {
+  return r.tenant ? config.tenants.traits[r.tenant.trait].color : undefined;
 }
 
 function drawArrow(ctx, cx, cy, size, dir, color) {
@@ -97,8 +79,8 @@ export function drawElevators(ctx, W, H, camera, config, system, alpha) {
       const shown = Math.min(queue.length, 6);
       for (let i = 0; i < shown; i++) {
         const r = queue[i];
-        const mood = moodOf(r.waited, ec);
-        drawFigure(ctx, x - cellPx * 0.2 - i * figSize * 0.42, baseY, figSize, MOOD_COLORS[mood], mood);
+        const mood = riderMood(r, config);
+        drawFigure(ctx, x - cellPx * 0.2 - i * figSize * 0.42, baseY, figSize, MOOD_COLORS[mood], mood, riderHead(r, config));
       }
       if (queue.length > shown && detailed) {
         ctx.fillStyle = '#ffffff';
@@ -136,7 +118,8 @@ export function drawElevators(ctx, W, H, camera, config, system, alpha) {
         car.riders.forEach((r, i) => {
           const col = i % 4;
           const row = Math.floor(i / 4);
-          drawFigure(ctx, ix + iw * (0.15 + col * 0.23), iy + ih * (0.62 + row * 0.34), size * (row ? 0.85 : 1), MOOD_COLORS.calm, 'calm');
+          const mood = riderMood(r, config);
+          drawFigure(ctx, ix + iw * (0.15 + col * 0.23), iy + ih * (0.62 + row * 0.34), size * (row ? 0.85 : 1), MOOD_COLORS[mood], 'calm', riderHead(r, config));
         });
       }
 

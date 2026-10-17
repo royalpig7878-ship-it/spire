@@ -69,6 +69,9 @@ export function computeReach(tower, config) {
       const r = run(floor, cell);
       return r !== undefined && find(r) === root;
     },
+    // Which walkable run a cell belongs to (undefined = nothing there).
+    // Two cells with the same run id can be walked between along the floor.
+    runAt: run,
   };
 }
 

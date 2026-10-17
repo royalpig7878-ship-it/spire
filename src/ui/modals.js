@@ -51,16 +51,27 @@ export function createModals(root) {
     showReport(report, onCollect) {
       const rows = report.rows.length
         ? report.rows
-            .map((r) => `<div class="row"><span>${r.name} x${r.count}</span><span>+${formatMoney(r.rent)}</span></div>`)
+            .map(
+              (r) =>
+                `<div class="row"><span>${r.name} x${r.count} <span class="muted-inline">${r.percent}% full</span></span><span>+${formatMoney(r.rent)}</span></div>`,
+            )
             .join('')
         : '<div class="row muted"><span>No rent this quarter</span><span>$0</span></div>';
+      const salesRow = report.sales
+        ? `<div class="row"><span>Customer sales</span><span>+${formatMoney(report.sales)}</span></div>`
+        : '';
+      const leftRow = report.moveOuts
+        ? `<div class="row muted"><span>Tenants moved out so far</span><span>${report.moveOuts}</span></div>`
+        : '';
       const positive = report.net >= 0;
       const card = open(`
         <h2>${COIN_ICON} Quarter ${report.quarter}, Year ${report.year}</h2>
         <div class="section-label">Rent collected</div>
         ${rows}
-        <div class="row total"><span>Total income</span><span>+${formatMoney(report.income)}</span></div>
+        <div class="row total"><span>Rent income</span><span>+${formatMoney(report.income)}</span></div>
+        ${salesRow}
         <div class="row"><span>Upkeep paid</span><span>-${formatMoney(report.upkeep)}</span></div>
+        ${leftRow}
         <div class="net ${positive ? 'gain' : 'loss'}">
           <span class="net-label">${positive ? '&#9650; Profit' : '&#9660; Loss'}</span>
           <span class="net-value" id="net-value">$0</span>

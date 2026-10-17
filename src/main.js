@@ -269,6 +269,8 @@ const loop = createGameLoop({
     hud.update({
       funds: game.tower.funds,
       topFloor: tallestFloor(game.tower),
+      population: game.tenants.stats.population,
+      mood: game.tenants.stats.mood,
       dateText: `Y${cal.year} Q${cal.quarter} D${cal.dayOfQuarter}`,
       timeText: formatTime(game.clock),
       speed: game.speed,
@@ -286,6 +288,7 @@ const loop = createGameLoop({
       hourOfDay(game.clock),
       game.elevators,
       smooth,
+      game.tenants,
     );
   },
 });

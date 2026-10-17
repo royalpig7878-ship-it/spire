@@ -10,13 +10,16 @@
 import { createTower, canDemolish, demolish, buildCost } from './tower.js';
 import { createElevatorSystem, updateElevators } from './elevators.js';
 import { createClock, calendar, dayIndex, MINUTES_PER_DAY } from './clock.js';
-import { createEconomy, dailyUpkeep, quarterlyRent } from './economy.js';
+import { createEconomy, dailyUpkeep, quarterlyRent, recordDailyOccupancy } from './economy.js';
+import { createTenantSystem, updateTenants, dailyTenantUpdate, occupancyOf } from './tenants.js';
 
 export function createGame(config) {
+  const clock = createClock(config);
   return {
     tower: createTower(config),
-    clock: createClock(config),
+    clock,
     economy: createEconomy(),
+    tenants: createTenantSystem(config, clock.minutes), // the people (saved in simple form)
     elevators: createElevatorSystem(), // cars and riders (not saved; rebuilt on load)
     demoTraffic: false, // Tools tab toggle: random riders for watching dispatch
     speed: config.time.defaultSpeed,
@@ -29,8 +32,10 @@ export function createGame(config) {
 export function updateGame(game, config, dtSeconds) {
   if (game.blocked || game.speed === 0) return;
 
-  // Elevators run in "sim seconds" (real seconds x speed), separate from the
-  // game clock, so cars stay watchable even though a game day is short.
+  // Tenants and elevators move in "sim seconds" (real seconds x speed),
+  // separate from the game clock, so people and cars stay watchable.
+  // Tenants go first so their ride requests are seen by this tick's dispatch.
+  updateTenants(game, config, dtSeconds * game.speed);
   updateElevators(game, config, dtSeconds * game.speed);
 
   let minutesLeft = (dtSeconds * game.speed * MINUTES_PER_DAY) / config.time.dayLengthSeconds;
@@ -53,18 +58,19 @@ export function updateGame(game, config, dtSeconds) {
 function onNewDay(game, config) {
   const { tower, economy, clock } = game;
 
-  // 1. Pay today's upkeep.
+  // 1. Pay today's upkeep, and note how full each rentable unit was today.
   const upkeep = dailyUpkeep(tower, config);
   tower.funds -= upkeep;
   economy.upkeepThisQuarter += upkeep;
+  recordDailyOccupancy(economy, tower, config, (f) => occupancyOf(game, config, f));
+  dailyTenantUpdate(game, config);
 
   // 2. If a quarter just ended, collect rent and prepare the report.
   const dpq = config.time.daysPerQuarter;
   const newDay0 = dayIndex(clock);
   if (newDay0 > 0 && newDay0 % dpq === 0) {
     const endMinute = clock.minutes;
-    const startMinute = endMinute - dpq * MINUTES_PER_DAY;
-    const rent = quarterlyRent(tower, config, startMinute, endMinute);
+    const rent = quarterlyRent(tower, config, economy);
     const fundsBefore = tower.funds;
     tower.funds += rent.total;
 
@@ -77,13 +83,17 @@ function onNewDay(game, config) {
         quarter: finished.quarter,
         rows: rent.rows,
         income: rent.total,
+        sales: economy.salesThisQuarter, // customer spending, already in funds
         upkeep: economy.upkeepThisQuarter,
-        net: rent.total - economy.upkeepThisQuarter,
+        net: rent.total + economy.salesThisQuarter - economy.upkeepThisQuarter,
+        moveOuts: game.tenants.stats.moveOuts,
         fundsBefore,
         fundsAfter: tower.funds,
       },
     });
     economy.upkeepThisQuarter = 0;
+    economy.salesThisQuarter = 0;
+    economy.occupancyDays = {};
     game.blocked = true;
   }
 

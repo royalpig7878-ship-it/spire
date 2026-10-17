@@ -76,6 +76,16 @@ milestone, once you've confirmed it works — never before.
 
 ## Milestone log
 
+- **M4 — Tenants**: offices and apartments fill with people who move in
+  hour by hour, follow daily routines (workers 8-5 with lunch, residents
+  out by day and home at night), and plan routes (stairs for 1-2 floors,
+  elevators for more, choosing by the live line length). They get stressed
+  waiting, in crowds and on long walks, calm down at home or at a cafe,
+  and move out if stress stays maxed. Five personality traits (see
+  `tenants.traits` in `config.js`) change their schedule and tolerance.
+  Rent now depends on how full each building is; cafes earn per visit.
+  Save format is now version 2 (older saves still load).
+
 - **M3 — Vertical transport**: stairwells and local elevators (drag up or
   down to choose how many floors), elevator cars with sliding doors,
   call buttons, queues, riders, and dispatch (the algorithm is explained

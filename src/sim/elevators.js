@@ -104,11 +104,14 @@ function syncShafts(game, config) {
 // A rider appears at floor `from` and wants to go to floor `to`.
 // (Tenants in M4 call this too.) Returns the rider, or null if no shaft
 // serves both floors or the line is full.
-export function requestRide(game, config, from, to) {
+// `opts.shaftId` forces a particular shaft (tenants follow their planned
+// route); `opts.tenant` links the rider to the person riding.
+export function requestRide(game, config, from, to, opts = {}) {
   if (from === to) return null;
   syncShafts(game, config); // a shaft built a moment ago may not be registered yet
   let best = null;
   for (const shaft of game.elevators.shafts.values()) {
+    if (opts.shaftId !== undefined && shaft.id !== opts.shaftId) continue;
     if (from < shaft.bottom || from > shaft.top || to < shaft.bottom || to > shaft.top) continue;
     const length = (shaft.waiting.get(from) ?? []).length;
     if (length >= config.elevators.maxQueuePerFloor) continue;
@@ -122,12 +125,38 @@ export function requestRide(game, config, from, to) {
     dir: Math.sign(to - from),
     waited: 0, // seconds spent in line
     rideTime: 0,
-    state: 'waiting', // waiting | riding | done
+    state: 'waiting', // waiting | riding | done | cancelled
+    tenant: opts.tenant ?? null,
+    shaftId: best.shaft.id,
   };
   const queue = best.shaft.waiting.get(from) ?? [];
   queue.push(rider);
   best.shaft.waiting.set(from, queue);
   return rider;
+}
+
+// Remove a rider from wherever they are (line or car), e.g. when a tenant
+// moves out or the shaft is demolished.
+export function cancelRider(game, rider) {
+  if (rider.state === 'done' || rider.state === 'cancelled') return;
+  const shaft = game.elevators.shafts.get(rider.shaftId);
+  rider.state = 'cancelled';
+  if (!shaft) return;
+  const queue = shaft.waiting.get(rider.from);
+  if (queue) {
+    const i = queue.indexOf(rider);
+    if (i >= 0) queue.splice(i, 1);
+  }
+  for (const car of shaft.cars) {
+    const i = car.riders.indexOf(rider);
+    if (i >= 0) car.riders.splice(i, 1);
+  }
+}
+
+// How many people are in line at a stop (used by tenants to pick a route).
+export function queueLength(game, shaftId, floor) {
+  const shaft = game.elevators.shafts.get(shaftId);
+  return shaft ? (shaft.waiting.get(floor) ?? []).length : 0;
 }
 
 function spawnDemoRider(game, config) {

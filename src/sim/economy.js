@@ -5,17 +5,18 @@
 // All the numbers come from config.js.
 
 import { tallestFloor, isConnected } from './tower.js';
-import { MINUTES_PER_DAY } from './clock.js';
 
 export function createEconomy() {
   return {
     upkeepThisQuarter: 0, // running total, shown on the quarterly report
+    salesThisQuarter: 0, // money customers spent this quarter (already in funds)
+    occupancyDays: {}, // facility id -> days of "fully occupied" earned this quarter
     debtDays: 0, // consecutive days spent below $0
   };
 }
 
-// Daily upkeep bill. Every facility costs (cells x upkeepPerCell), and the
-// whole bill grows with the tower's height: bigger towers cost more to run.
+// Daily upkeep bill. Every facility costs (cells x floors x upkeepPerCell), and
+// the whole bill grows with the tower's height: bigger towers cost more to run.
 export function dailyUpkeep(tower, config) {
   let base = 0;
   for (const f of tower.facilities.values()) {
@@ -25,27 +26,39 @@ export function dailyUpkeep(tower, config) {
   return Math.round(base * sizeFactor);
 }
 
-// Rent due at the end of a quarter. Only occupied facilities pay, and a
-// facility built partway through the quarter pays only for the days it
-// existed (so building right before the report isn't a free-money trick).
-export function quarterlyRent(tower, config, quarterStartMinute, quarterEndMinute) {
-  const quarterMinutes = config.time.daysPerQuarter * MINUTES_PER_DAY;
-  const byType = new Map(); // type -> { type, name, count, rent }
+// Once a day, note how full each rentable facility was. `occupancyOf` returns
+// 0..1 (tenants / capacity). Unreachable facilities earn nothing.
+export function recordDailyOccupancy(economy, tower, config, occupancyOf) {
+  for (const f of tower.facilities.values()) {
+    if (config.facilities[f.type].rentPerCell <= 0 || !isConnected(tower, config, f)) continue;
+    economy.occupancyDays[f.id] = (economy.occupancyDays[f.id] ?? 0) + occupancyOf(f);
+  }
+}
+
+// Rent due at the end of a quarter: each facility's full-quarter rent times
+// the share of days it was occupied (an empty unit pays nothing, a unit built
+// halfway through the quarter only counts the days it existed).
+export function quarterlyRent(tower, config, economy) {
+  const dpq = config.time.daysPerQuarter;
+  const byType = new Map(); // type -> { type, name, count, rent, days }
   let total = 0;
 
   for (const f of tower.facilities.values()) {
     const def = config.facilities[f.type];
-    // Only occupied facilities that people can actually reach pay rent.
-    if (!f.occupied || def.rentPerCell <= 0 || !isConnected(tower, config, f)) continue;
-    const ownedFrom = Math.max(quarterStartMinute, f.builtMinute);
-    const fraction = Math.max(0, Math.min(1, (quarterEndMinute - ownedFrom) / quarterMinutes));
-    const rent = Math.round(f.width * def.rentPerCell * fraction);
+    if (def.rentPerCell <= 0) continue;
+    const days = Math.min(dpq, economy.occupancyDays[f.id] ?? 0);
+    const rent = Math.round((f.width * def.rentPerCell * days) / dpq);
 
-    const row = byType.get(f.type) ?? { type: f.type, name: def.name, count: 0, rent: 0 };
+    const row = byType.get(f.type) ?? { type: f.type, name: def.name, count: 0, rent: 0, days: 0 };
     row.count += 1;
     row.rent += rent;
+    row.days += days;
     byType.set(f.type, row);
     total += rent;
   }
-  return { rows: Array.from(byType.values()), total };
+  const rows = Array.from(byType.values()).map((r) => ({
+    ...r,
+    percent: Math.round((r.days / (dpq * r.count)) * 100), // average % occupied
+  }));
+  return { rows, total };
 }

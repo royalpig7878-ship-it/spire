@@ -88,6 +88,22 @@
       border: 0;
     }
     .hud2 { top: calc(max(8px, env(safe-area-inset-top)) + 56px); align-items: center; }
+    .hud3 { top: calc(max(8px, env(safe-area-inset-top)) + 112px); justify-content: flex-start; }
+    .pill.small { font-size: calc(13px * var(--text-scale)); padding: 4px 12px; min-height: 0; }
+    #hud-mood.low { color: #ff8a8a; }
+    #hud-mood.low::before {
+      content: '!';
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      line-height: 16px;
+      margin-right: 6px;
+      border-radius: 50%;
+      background: #d64545;
+      color: #fff;
+      text-align: center;
+      font-size: 12px;
+    }
     #hud-clock { font-size: calc(14px * var(--text-scale)); padding: 10px 14px; }
     .speeds {
       display: flex;
@@ -109,7 +125,7 @@
     .speed-btn.active { background: var(--accent); color: #1d2733; }
     .debt-banner {
       position: absolute;
-      top: calc(max(8px, env(safe-area-inset-top)) + 112px);
+      top: calc(max(8px, env(safe-area-inset-top)) + 150px);
       left: 50%;
       transform: translateX(-50%);
       background: #d64545;
@@ -154,6 +170,7 @@
     .row { display: flex; justify-content: space-between; padding: 6px 0; font-weight: 500; }
     .row.total { border-top: 1px solid var(--bar-border); margin-top: 4px; font-weight: 700; }
     .row.muted { color: #9fb0c0; }
+    .muted-inline { color: #9fb0c0; font-size: 0.85em; margin-left: 6px; }
     .net {
       display: flex;
       justify-content: space-between;

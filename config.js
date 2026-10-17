@@ -14,9 +14,11 @@ export const config = {
 
   // --- Game clock ---
   time: {
-    dayLengthSeconds: 90, // real seconds for one full game day at 1x speed
+    // Real seconds for one full game day at 1x speed. Long enough that a
+    // morning rush (about 2 game hours) lasts ~20 seconds you can watch.
+    dayLengthSeconds: 240,
     startHour: 6, // the game begins at 6:00 AM on day 1
-    daysPerQuarter: 10, // length of one quarter, in game days
+    daysPerQuarter: 6, // length of one quarter, in game days
     quartersPerYear: 4,
     speeds: [0, 1, 2, 4], // speed buttons: pause, 1x, 2x, 4x
     defaultSpeed: 1,
@@ -77,7 +79,7 @@ export const config = {
   // --- Saving ---
   save: {
     key: 'spire.save', // localStorage key
-    version: 1, // bump when the save format changes (see src/sim/save.js)
+    version: 2, // bump when the save format changes (see src/sim/save.js)
   },
 
   // --- Build interaction ---
@@ -110,6 +112,8 @@ export const config = {
       category: 'work',
       width: 4,
       cost: 4000,
+      capacity: 6, // workers who can have a desk here
+      tenantKind: 'worker',
       minFloor: 1,
       rentPerCell: 300,
       upkeepPerCell: 6,
@@ -121,6 +125,8 @@ export const config = {
       category: 'living',
       width: 3,
       cost: 3000,
+      capacity: 3, // residents who can live here
+      tenantKind: 'resident',
       minFloor: 1,
       rentPerCell: 300,
       upkeepPerCell: 6,
@@ -132,6 +138,8 @@ export const config = {
       category: 'commerce',
       width: 4,
       cost: 5000,
+      visitRevenue: 12, // money earned per customer visit
+      visitCapacity: 8, // customers at once
       minFloor: 1,
       rentPerCell: 250,
       upkeepPerCell: 8,
@@ -174,13 +182,13 @@ export const config = {
   // --- Elevators ---
   // Times are in "sim seconds": real seconds at 1x speed (2x/4x run faster).
   elevators: {
-    defaultCars: 1, // cars per shaft (the shaft settings screen comes in M5)
+    defaultCars: 2, // cars per shaft (the shaft settings screen comes in M5)
     car: {
       capacity: 8, // riders per car
-      speedFloorsPerSec: 2.4, // travel speed
-      doorSeconds: 0.7, // time for doors to open (or close)
-      dwellSeconds: 1.3, // doors stay open this long after the last person moves
-      exchangeSeconds: 0.28, // time for one person to step on or off
+      speedFloorsPerSec: 3.6, // travel speed
+      doorSeconds: 0.5, // time for doors to open (or close)
+      dwellSeconds: 0.9, // doors stay open this long after the last person moves
+      exchangeSeconds: 0.2, // time for one person to step on or off
       idleParkSeconds: 4, // an idle car drives back to its home floor after this long
     },
     // How hall calls are matched to cars (see src/sim/elevators.js).
@@ -192,12 +200,78 @@ export const config = {
       bunchPenaltyFloors: 4, // extra cost for sending a car right next to another busy car
       loadPenaltyFloors: 2, // extra cost for a nearly full car
     },
-    maxQueuePerFloor: 14, // riders that can wait at one stop
+    maxQueuePerFloor: 40, // riders that can wait at one stop
     // Waiting-rider moods (seconds waited). Tenants in M4 reuse these.
     impatientAfterSec: 10,
     stressedAfterSec: 22,
     // Demo traffic (Tools tab) spawns random riders so you can watch dispatch.
     demoSpawnEverySec: 1.1,
+  },
+
+  // --- Tenants: the people who live and work in the tower ---
+  // Times of day are in minutes after midnight (8 * 60 = 8:00 AM).
+  // "sec" values are sim seconds (real seconds at 1x speed).
+  tenants: {
+    maxSimulated: 500, // safety cap on individually simulated tenants
+    walkSpeedCellsPerSec: 1.7, // walking speed along a floor
+    stairSecPerFloor: 3.2, // time to climb or descend one floor of stairs
+
+    // New tenants move into vacant, reachable units. Each hour, every vacancy
+    // has this chance (scaled down when the tower's mood is low).
+    moveIn: {
+      chancePerVacancyPerHour: 0.12,
+      minDemand: 0.25, // lowest the mood multiplier can push move-ins
+      enterDelayMin: [5, 45], // a new tenant first shows up this many game minutes later
+    },
+
+    // Daily routines. Each tenant gets small personal offsets (see traits).
+    schedules: {
+      worker: { arrive: 8 * 60, leave: 17 * 60, lunch: 12 * 60, lunchDurMin: [30, 50] },
+      resident: { leave: 7.5 * 60, back: 18 * 60 },
+      // Extra cafe trips for Social tenants.
+      socialWorkerBreak: { start: 15.5 * 60, durMin: [20, 30] },
+      socialEvening: { start: 19.5 * 60, durMin: [30, 50] },
+    },
+
+    // How the route planner compares stairs with elevators (see src/sim/routing.js).
+    routing: {
+      elevatorBaseWaitSec: 8, // typical wait for a car on an empty line
+      elevatorPerWaiterSec: 1.5, // each person already in line adds this
+      elevatorRideSecPerFloor: 0.5,
+      retryRideEverySec: 2, // when the line is full, try again this often
+    },
+
+    // Stress runs 0-100. GAIN values are multiplied by the trait (below).
+    stress: {
+      waitPerSec: 1.7, // standing in an elevator line
+      queueCrowdBonus: 0.04, // line length adds this fraction per waiting person
+      ridePerSec: 0.25, // riding a crowded car (scaled by how full it is)
+      walkPerCell: 0.12, // long walks along a floor
+      stairsPerFloor: 0.8, // climbing
+      crowdedFloorPeople: 8, // above this many people on a floor, it feels crowded
+      crowdPerSec: 0.25, // crowded floor, per extra person over the limit / limit
+      decayInsidePerSec: 0.5, // calming down at home or at work
+      decayAwayPerSec: 1.5, // calming down while outside the tower
+      cafeRelief: 28, // stress removed by a cafe visit
+      calmBelow: 35, // below this: calm (blue)
+      stressedAbove: 70, // above this: stressed (red); in between: impatient (amber)
+      maxedLeaveSec: 14, // stress pinned at 100 this long -> they move out
+    },
+
+    // Personality traits. Weight = how common. thresholdMult below 1 means
+    // stress builds faster (0.6 = threshold 40% lower, i.e. gain x1.67).
+    // jitterMin = schedule wobble; shiftMin = schedule shifted later;
+    // reliefMult = how much cafe visits help; crowdMult = bothered by crowds.
+    traits: {
+      punctual: { label: 'Punctual', weight: 30, thresholdMult: 0.85, jitterMin: 4, shiftMin: 0, reliefMult: 1, crowdMult: 1, color: '#3b82c4' },
+      impatient: { label: 'Impatient', weight: 20, thresholdMult: 0.6, jitterMin: 35, shiftMin: 0, reliefMult: 1, crowdMult: 1.3, color: '#e8842c' },
+      nightOwl: { label: 'Night Owl', weight: 15, thresholdMult: 1.0, jitterMin: 40, shiftMin: 180, reliefMult: 1, crowdMult: 0.9, color: '#7a5bc4' },
+      social: { label: 'Social', weight: 20, thresholdMult: 1.0, jitterMin: 30, shiftMin: 0, reliefMult: 2, crowdMult: 0.6, color: '#d6559a' },
+      quiet: { label: 'Quiet', weight: 15, thresholdMult: 1.1, jitterMin: 20, shiftMin: 0, reliefMult: 0.7, crowdMult: 0.5, color: '#2e9c8e' },
+    },
+
+    // Moving out hurts the tower's reputation (rating tiers in M7 will use it).
+    reputation: { start: 50, perMoveOut: -1.5, perGoodDay: 0.4, goodMoodAbove: 70 },
   },
 
   // --- Sky colors through the day ---

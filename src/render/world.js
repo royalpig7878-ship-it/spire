@@ -6,6 +6,7 @@
 
 import { drawFacility, drawNoAccessBadge, roundedRectPath } from './facilities.js';
 import { drawElevators } from './elevators.js';
+import { drawTenants } from './tenants.js';
 import { drawSky } from './sky.js';
 import { mixToHex } from './color.js';
 import { isConnected } from '../sim/tower.js';
@@ -13,7 +14,7 @@ import { formatMoney } from '../data/format.js';
 
 // `hour` is the time of day (0-24) from the game clock. `elevators` is the
 // elevator system state; `alpha` (0-1) smooths motion between sim ticks.
-export function renderWorld(ctx, W, H, camera, config, tower, ui, hour, elevators, alpha) {
+export function renderWorld(ctx, W, H, camera, config, tower, ui, hour, elevators, alpha, tenants) {
   const world = config.world;
   const { cellWidth, floorHeight } = config.grid;
   const zoom = camera.zoom;
@@ -82,13 +83,13 @@ export function renderWorld(ctx, W, H, camera, config, tower, ui, hour, elevator
     if (x > W || x + w < 0) continue;
     const def = config.facilities[f.type];
     const connected = isConnected(tower, config, f);
-    const look = {
-      isMain: f.locked,
-      dark: skyState.dark,
-      lit: f.occupied && connected && !def.transport ? 1 : 0,
-      sky: config.sky,
-      tileIndex: 0,
-    };
+    // Windows glow at night when someone is inside. Homes and offices light up
+    // only while a tenant is actually there; shops and lobbies when reachable.
+    let lit = 0;
+    if (!def.transport && connected) {
+      lit = def.capacity ? ((tenants.present.get(f.id) ?? 0) > 0 ? 1 : 0) : 1;
+    }
+    const look = { isMain: f.locked, dark: skyState.dark, lit, sky: config.sky, tileIndex: 0 };
     for (let i = 0; i < f.height; i++) {
       const y = slotY(f.floor + i);
       if (y > H || y + floorPx < 0) continue;
@@ -99,6 +100,9 @@ export function renderWorld(ctx, W, H, camera, config, tower, ui, hour, elevator
       drawNoAccessBadge(ctx, x, slotY(f.floor), w, floorPx);
     }
   }
+
+  // --- People walking, climbing, relaxing at their desks ---
+  drawTenants(ctx, W, H, camera, config, tenants);
 
   // --- Elevator cars, call buttons and waiting riders ---
   drawElevators(ctx, W, H, camera, config, elevators, alpha);

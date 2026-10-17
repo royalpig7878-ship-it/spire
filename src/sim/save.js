@@ -6,9 +6,15 @@
 // we bump config.save.version and add a step in `migrate` below so older
 // saves keep working instead of breaking. Anything unreadable is ignored
 // (we never crash because of a bad save).
+//
+// Version history:
+//   1 - tower, clock, economy, speed
+//   2 - adds tenants (people restart "away" and walk in again on load)
 
 import { serializeTower, restoreTower } from './tower.js';
 import { createElevatorSystem } from './elevators.js';
+import { createEconomy } from './economy.js';
+import { serializeTenants, restoreTenants } from './tenants.js';
 
 export function saveGame(game, config) {
   try {
@@ -18,6 +24,7 @@ export function saveGame(game, config) {
       tower: serializeTower(game.tower),
       clockMinutes: game.clock.minutes,
       economy: { ...game.economy },
+      tenants: serializeTenants(game.tenants),
       speed: game.speed,
     };
     localStorage.setItem(config.save.key, JSON.stringify(data));
@@ -45,7 +52,8 @@ export function loadGame(game, config) {
 
     game.tower = restoreTower(config, data.tower);
     game.clock.minutes = data.clockMinutes;
-    game.economy = { upkeepThisQuarter: 0, debtDays: 0, ...data.economy };
+    game.economy = { ...createEconomy(), ...data.economy };
+    game.tenants = restoreTenants(game, config, data.tenants);
     game.speed = data.speed ?? config.time.defaultSpeed;
     game.elevators = createElevatorSystem(); // cars restart at their home floors
     game.blocked = false;
@@ -56,9 +64,12 @@ export function loadGame(game, config) {
   }
 }
 
-// Upgrades an older save to the current format. Version 1 is the first
-// format, so there is nothing to upgrade yet.
+// Upgrades an older save to the current format.
 function migrate(data, config) {
-  if (!data || data.version !== config.save.version) return null;
-  return data;
+  if (!data || typeof data.version !== 'number' || data.version > config.save.version) return null;
+  if (data.version === 1) {
+    data.tenants = { list: [], stats: {} }; // v1 had no people
+    data.version = 2;
+  }
+  return data.version === config.save.version ? data : null;
 }

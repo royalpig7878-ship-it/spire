@@ -16,16 +16,22 @@ export function createHud(root, config, callbacks) {
     'beforeend',
     `<div class="hud">
       <div class="pill" id="hud-funds"></div>
-      <div class="pill" id="hud-height"></div>
+      <div class="pill" id="hud-pop"></div>
       <button class="pill icon-btn" id="hud-menu" type="button" aria-label="Menu">${MENU_ICON}</button>
     </div>
     <div class="hud hud2">
       <div class="pill" id="hud-clock"></div>
       <div class="speeds" id="hud-speeds"></div>
     </div>
+    <div class="hud hud3">
+      <div class="pill small" id="hud-height"></div>
+      <div class="pill small" id="hud-mood"></div>
+    </div>
     <div class="debt-banner" id="hud-debt"></div>`,
   );
   const fundsEl = root.querySelector('#hud-funds');
+  const popEl = root.querySelector('#hud-pop');
+  const moodEl = root.querySelector('#hud-mood');
   const heightEl = root.querySelector('#hud-height');
   const clockEl = root.querySelector('#hud-clock');
   const speedsEl = root.querySelector('#hud-speeds');
@@ -49,11 +55,15 @@ export function createHud(root, config, callbacks) {
   };
 
   return {
-    // state: { funds, topFloor, dateText, timeText, speed, debtDaysLeft }
+    // state: { funds, topFloor, population, mood, dateText, timeText, speed, debtDaysLeft }
     update(state) {
       setText(fundsEl, formatMoney(state.funds));
       fundsEl.classList.toggle('debt', state.funds < 0);
+      setText(popEl, `Pop ${state.population}`);
       setText(heightEl, `Floors ${state.topFloor} / ${config.plot.maxFloor}`);
+      // Low mood gets a "!" badge as well as red text (never color alone).
+      setText(moodEl, `Mood ${state.mood}%`);
+      moodEl.classList.toggle('low', state.mood < 50);
       setText(clockEl, `${state.dateText}  ${state.timeText}`);
       for (const [speed, b] of speedButtons) {
         const active = speed === state.speed;
