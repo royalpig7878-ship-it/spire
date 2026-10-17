@@ -76,6 +76,11 @@ milestone, once you've confirmed it works — never before.
 
 ## Milestone log
 
+- **M1 — Grid and building**: cell/floor grid, lobby, build toolbar with
+  category tabs, ghost-preview placement (check mark = allowed, hatched
+  cross = blocked, with the reason), funds, three vector buildings
+  (office, apartment, café), lobby wings, demolish tool with 50% refund.
+
 - **M0 — Project skeleton**: fixed-timestep game loop, full-screen
   canvas with resize/orientation handling, pan & pinch-zoom touch input,
   placeholder sky and ground. Git initialized, local-network phone

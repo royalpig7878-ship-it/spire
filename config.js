@@ -8,51 +8,120 @@
 export const config = {
   // --- Simulation timing ---
   sim: {
-    // How many simulation "ticks" happen per second, no matter how fast
-    // or slow the device is rendering frames. Keeping this fixed means
-    // the game behaves the same on a fast phone and a slow one.
+    // Simulation "ticks" per second, regardless of device frame rate.
     ticksPerSecond: 30,
   },
 
   // --- Camera (pan & zoom) ---
   camera: {
-    // Smallest and largest zoom level allowed. 1 = normal size,
-    // 0.5 = zoomed out to half size, 3 = zoomed in to 3x size.
-    minZoom: 0.1,
-    maxZoom: 4,
-    // Starting zoom level when the game first loads.
-    startZoom: 1,
-    // How far the camera starts from the world origin, in world pixels.
+    minZoom: 0.1, // 0.1 = zoomed way out (see a huge tower)
+    maxZoom: 4, // 4 = zoomed way in
+    startZoom: 0.7,
+    // World point at the center of the screen when the game starts.
+    // Negative y = above street level. This puts the street a bit below center.
     startX: 0,
-    startY: 0,
-    // Two taps within this many milliseconds and this close together
-    // (in screen pixels) count as a "double-tap to zoom".
+    startY: -110,
+    // Two taps within this time/distance count as a double-tap zoom.
     doubleTapMaxDelayMs: 300,
     doubleTapMaxDistancePx: 40,
-    // How much each double-tap multiplies the zoom level by.
     doubleTapZoomFactor: 1.6,
-    // How much a single mouse-wheel "click" changes zoom by (desktop only).
-    wheelZoomFactor: 1.1,
+    wheelZoomFactor: 1.1, // desktop mouse wheel
+    // How far past the plot edges the camera may wander (world pixels).
+    panMarginPx: 300,
   },
 
-  // --- Placeholder world (replaced by the real grid in Milestone 1) ---
+  // --- The grid ---
+  grid: {
+    cellWidth: 40, // world pixels per cell, horizontally
+    floorHeight: 48, // world pixels per floor, vertically
+  },
+
+  // --- The building plot (grows with rating tier in M7) ---
+  plot: {
+    halfWidthCells: 24, // plot spans cells -24 .. +23
+    maxFloor: 10, // highest floor you may build (floor 0 = lobby level)
+    minFloor: -2, // deepest basement (basement facilities arrive later)
+  },
+
+  // --- Lobby ---
+  lobby: {
+    startCell: -6, // leftmost cell of the starting lobby
+    startWidthCells: 12,
+  },
+
+  // --- Money ---
+  economy: {
+    startFunds: 30000,
+    demolishRefundRatio: 0.5, // fraction of build cost refunded on demolish
+  },
+
+  // --- Build interaction ---
+  build: {
+    // On touch screens the ghost is drawn this many screen pixels ABOVE
+    // your fingertip so your finger doesn't hide it.
+    touchOffsetPx: 56,
+  },
+
+  // --- Facility catalog (M1 subset; the full catalog comes in M6) ---
+  // width: cells wide. cost: build price. minFloor/maxFloor: allowed floors
+  // (maxFloor omitted = plot.maxFloor). color/accent: vector art palette.
+  facilities: {
+    lobby: {
+      name: 'Lobby wing',
+      category: 'lobby',
+      width: 2,
+      cost: 2000,
+      minFloor: 0,
+      maxFloor: 0,
+      color: '#cdbfa6',
+      accent: '#8fb7c9',
+    },
+    office: {
+      name: 'Small office',
+      category: 'work',
+      width: 4,
+      cost: 4000,
+      minFloor: 1,
+      color: '#4f7fc9',
+      accent: '#bcd6f7',
+    },
+    apartment: {
+      name: 'Apartment',
+      category: 'living',
+      width: 3,
+      cost: 3000,
+      minFloor: 1,
+      color: '#e2905b',
+      accent: '#ffe3a3',
+    },
+    cafe: {
+      name: 'Café',
+      category: 'commerce',
+      width: 4,
+      cost: 5000,
+      minFloor: 1,
+      color: '#3f9d70',
+      accent: '#f6f1e7',
+    },
+  },
+
+  // --- Look of the world ---
   world: {
-    groundY: 0, // world-space y coordinate of street level
-    groundColor: '#4a5a4e',
+    groundY: 0, // world-space y of street level
+    groundColor: '#4a5a4e', // underground
+    grassColor: '#6fae5b', // thin strip along street level
+    grassHeight: 10, // world pixels
     skyColors: {
-      // Simple placeholder sky — a real day/night cycle comes in Milestone 2.
+      // Placeholder sky — the day/night cycle arrives in M2.
       top: '#6ea8d8',
       bottom: '#cfe8f5',
     },
-    // Placeholder reference marks so you can SEE panning and zooming
-    // working. They go away when the real grid and buildings arrive in M1.
-    debug: {
-      gridSize: 100, // world pixels between grid lines on the ground
-      gridColor: 'rgba(255,255,255,0.35)',
-      markerSize: 100, // side length of the landmark square (world pixels)
-      markerColor: '#e8553d',
-      markerOutline: '#ffffff',
-      showReadout: true, // small "zoom / x / y" text in the top-left corner
-    },
+    plotOutlineColor: 'rgba(255,255,255,0.5)',
+    gridColor: 'rgba(255,255,255,0.28)', // cell grid, shown while building
+    validColor: '#1f9d55', // ghost outline when placement is allowed
+    invalidColor: '#d64545', // ghost outline when it is not
+    // Below this zoom level facilities are drawn as flat blocks (faster,
+    // and details would be too tiny to see anyway).
+    detailMinZoom: 0.3,
   },
 };

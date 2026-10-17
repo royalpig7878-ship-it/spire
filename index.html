@@ -2,15 +2,19 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <!-- width=device-width + initial-scale=1 tells mobile browsers not to
-       zoom the page out to "fit everything" like a desktop site. -->
-  <!-- maximum-scale=1 + user-scalable=no is belt-and-suspenders: some
-       mobile browsers will still try their own pinch-zoom on the page
-       unless the viewport itself says not to. -->
+  <!-- maximum-scale=1 + user-scalable=no stops the browser's own pinch-zoom
+       so our game can handle zooming itself. -->
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <title>SPIRE</title>
   <style>
-    /* Reset so the canvas can fill the whole screen with no scrollbars. */
+    :root {
+      /* Text size multiplier; a settings screen will change this in M8. */
+      --text-scale: 1;
+      --bar-bg: #1d2733;
+      --bar-border: #33414f;
+      --chip-bg: #2b3a4a;
+      --accent: #ffd166;
+    }
     html, body {
       margin: 0;
       padding: 0;
@@ -18,24 +22,139 @@
       height: 100%;
       overflow: hidden;
       background: #000;
-      /* Stops the browser's own pinch-zoom/scroll gestures from fighting
-         with our own touch handling in src/ui/input.js. */
-      touch-action: none;
+      overscroll-behavior: none;
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
     }
     canvas {
       display: block;
       width: 100%;
       height: 100%;
-      /* touch-action is NOT inherited from html/body in CSS, so without
-         this line the canvas itself still allows the browser's native
-         pinch-zoom/scroll — which hijacks our own pan/zoom handling and
-         can shrink the whole page into a tiny zoomed-out square. */
+      /* touch-action is NOT inherited, so the canvas needs its own. This
+         stops the browser's native pinch-zoom/scroll on the game view. */
       touch-action: none;
+    }
+
+    /* ---- UI layer on top of the canvas ---- */
+    #ui-root {
+      position: fixed;
+      inset: 0;
+      pointer-events: none; /* let touches fall through to the canvas... */
+      font: 600 calc(14px * var(--text-scale)) system-ui, -apple-system, 'Segoe UI', sans-serif;
+      color: #fff;
+    }
+    #ui-root .hud, #ui-root .toolbar, #ui-root .toast { pointer-events: none; }
+    #ui-root .pill, #ui-root .toolbar { pointer-events: auto; } /* ...except on real controls */
+
+    .hud {
+      position: absolute;
+      top: max(8px, env(safe-area-inset-top));
+      left: 8px;
+      right: 8px;
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .pill {
+      background: rgba(29, 39, 51, 0.88);
+      border-radius: 22px;
+      padding: 10px 16px;
+      min-height: 24px;
+      line-height: 24px;
+      font-size: calc(16px * var(--text-scale));
+    }
+    #hud-funds { color: var(--accent); }
+
+    .toast {
+      position: absolute;
+      left: 50%;
+      bottom: calc(200px + env(safe-area-inset-bottom));
+      transform: translateX(-50%);
+      background: rgba(20, 28, 38, 0.95);
+      border-radius: 20px;
+      padding: 10px 18px;
+      opacity: 0;
+      transition: opacity 0.2s;
+      white-space: nowrap;
+    }
+    .toast.show { opacity: 1; }
+
+    .toolbar {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: var(--bar-bg);
+      border-top: 1px solid var(--bar-border);
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    .hint {
+      padding: 6px 12px 0;
+      font-size: calc(12px * var(--text-scale));
+      font-weight: 500;
+      color: #b8c4d0;
+      min-height: 1.3em;
+    }
+    .tabs, .items {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 6px 8px;
+      scrollbar-width: none;
+      touch-action: pan-x; /* these rows scroll sideways with a finger */
+    }
+    .tabs::-webkit-scrollbar, .items::-webkit-scrollbar { display: none; }
+    button {
+      font: inherit;
+      color: inherit;
+      border: 2px solid transparent;
+      cursor: pointer;
+    }
+    .tab {
+      flex: 0 0 auto;
+      min-height: 44px;
+      padding: 0 18px;
+      border-radius: 22px;
+      background: transparent;
+      color: #b8c4d0;
+    }
+    .tab.active { background: var(--chip-bg); color: #fff; border-color: var(--accent); }
+    .item {
+      flex: 0 0 auto;
+      min-width: 96px;
+      min-height: 76px;
+      padding: 6px 10px;
+      border-radius: 14px;
+      background: var(--chip-bg);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+    }
+    .item.active { border-color: var(--accent); background: #3a4c60; }
+    .item .name { font-size: calc(13px * var(--text-scale)); }
+    .item .cost { font-size: calc(12px * var(--text-scale)); color: var(--accent); }
+    /* Unaffordable: dimmed AND the price gets a strike line (not color only). */
+    .item.poor { opacity: 0.6; }
+    .item.poor .cost { text-decoration: line-through; }
+    .swatch {
+      width: 30px;
+      height: 30px;
+      border-radius: 8px;
+      border: 3px solid;
+      box-sizing: border-box;
+      display: grid;
+      place-items: center;
+      font-size: 13px;
+      color: rgba(0, 0, 0, 0.65);
     }
   </style>
 </head>
 <body>
   <canvas id="game-canvas"></canvas>
+  <div id="ui-root"></div>
   <!-- type="module" lets us use ES module import/export between files. -->
   <script type="module" src="./src/main.js"></script>
 </body>
