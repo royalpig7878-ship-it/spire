@@ -1,0 +1,8 @@
+# OS/editor noise, not part of the project itself
+.DS_Store
+Thumbs.db
+*.log
+
+# If we ever add Node-based tooling (e.g. a dev server package),
+# installed dependencies go here — never commit node_modules.
+node_modules/

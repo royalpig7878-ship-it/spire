@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <!-- width=device-width + initial-scale=1 tells mobile browsers not to
+       zoom the page out to "fit everything" like a desktop site. -->
+  <!-- maximum-scale=1 + user-scalable=no is belt-and-suspenders: some
+       mobile browsers will still try their own pinch-zoom on the page
+       unless the viewport itself says not to. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <title>SPIRE</title>
+  <style>
+    /* Reset so the canvas can fill the whole screen with no scrollbars. */
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+      /* Stops the browser's own pinch-zoom/scroll gestures from fighting
+         with our own touch handling in src/ui/input.js. */
+      touch-action: none;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      /* touch-action is NOT inherited from html/body in CSS, so without
+         this line the canvas itself still allows the browser's native
+         pinch-zoom/scroll — which hijacks our own pan/zoom handling and
+         can shrink the whole page into a tiny zoomed-out square. */
+      touch-action: none;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="game-canvas"></canvas>
+  <!-- type="module" lets us use ES module import/export between files. -->
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
