@@ -6,6 +6,13 @@
        so our game can handle zooming itself. -->
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <title>SPIRE</title>
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#22346e" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="SPIRE" />
   <style>
     :root {
       /* Text size multiplier; a settings screen will change this in M8. */
@@ -305,6 +312,77 @@
     .choice { background: var(--chip-bg); }
     .choice:disabled { opacity: 0.45; }
     .card { position: relative; }
+    .setting { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 6px 0; font-weight: 500; }
+    .setting input[type='range'] { flex: 1; max-width: 160px; height: 44px; accent-color: var(--accent); }
+    .seg { display: flex; gap: 4px; background: #14202c; border-radius: 12px; padding: 3px; }
+    .seg button { min-height: 44px; min-width: 52px; padding: 0 10px; border-radius: 10px; background: transparent; font-size: calc(13px * var(--text-scale)); }
+    .seg button.on { background: var(--accent); color: #1d2733; font-weight: 700; }
+
+    /* ---- Tutorial card, tenant story card, frame rate, animation touches ---- */
+    .tutorial {
+      position: absolute;
+      top: calc(max(8px, env(safe-area-inset-top)) + 166px);
+      left: 8px;
+      right: 8px;
+      background: rgba(22, 32, 44, 0.97);
+      border: 2px solid var(--accent);
+      border-radius: 16px;
+      padding: 10px 12px;
+      pointer-events: auto;
+      z-index: 5;
+    }
+    .tutorial[hidden] { display: none; }
+    .tutorial-count { font-size: calc(11px * var(--text-scale)); color: var(--accent); text-transform: uppercase; letter-spacing: 0.06em; }
+    .tutorial-text { margin: 4px 0 8px; line-height: 1.4; font-weight: 500; }
+    .tutorial-actions { display: flex; gap: 8px; justify-content: flex-end; }
+    .tutorial-actions .primary, .tutorial-actions .secondary { width: auto; margin-top: 0; padding: 0 16px; min-height: 44px; }
+    .tutorial-pulse { animation: pulse 1s ease-in-out infinite; position: relative; z-index: 4; }
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(255, 209, 102, 0.9); }
+      50% { box-shadow: 0 0 0 9px rgba(255, 209, 102, 0); }
+    }
+    .story-card {
+      position: absolute;
+      left: 8px;
+      right: 8px;
+      bottom: calc(var(--toolbar-h, 200px) + 8px);
+      background: rgba(22, 32, 44, 0.97);
+      border: 1px solid var(--bar-border);
+      border-radius: 16px;
+      padding: 10px 12px;
+      pointer-events: auto;
+      animation: slide-up 0.18s ease-out;
+    }
+    .story-card[hidden] { display: none; }
+    #ui-root.story-open .legend { display: none; }
+    .story-head { display: flex; justify-content: space-between; align-items: flex-start; }
+    .story-name { font-size: calc(17px * var(--text-scale)); font-weight: 700; }
+    .story-job { color: #9fb0c0; font-weight: 500; }
+    .story-status { margin: 6px 0; font-size: calc(15px * var(--text-scale)); color: var(--accent); }
+    .story-mood { display: flex; align-items: center; gap: 10px; font-weight: 500; margin-bottom: 4px; }
+    .story-mood .bar { flex: 1; height: 8px; border-radius: 4px; background: #2b3a4a; overflow: hidden; }
+    .story-mood .bar span { display: block; height: 100%; background: linear-gradient(90deg, #f7b267, #8e1d4c); }
+    .story-trait { font-weight: 500; color: #c8d2dc; line-height: 1.35; margin-bottom: 4px; }
+    .story-trait .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+    .story-card .secondary { margin-top: 4px; min-height: 44px; }
+    @keyframes slide-up { from { transform: translateY(14px); opacity: 0; } to { transform: none; opacity: 1; } }
+    .sheet:not([hidden]) { animation: slide-up 0.2s ease-out; }
+    .fps {
+      position: fixed;
+      left: 6px;
+      bottom: 4px;
+      font: 600 11px system-ui, sans-serif;
+      color: #fff;
+      background: rgba(0, 0, 0, 0.55);
+      border-radius: 6px;
+      padding: 2px 6px;
+      pointer-events: none;
+      z-index: 20;
+    }
+    .fps[hidden] { display: none; }
+    #hud-funds.bump { animation: bump 0.35s ease-out; }
+    @keyframes bump { 0% { transform: scale(1); } 40% { transform: scale(1.12); } 100% { transform: scale(1); } }
+    button:active:not(:disabled) { transform: scale(0.97); }
     .center { text-align: center; justify-content: center; }
     .big { font-size: calc(30px * var(--text-scale)); letter-spacing: 4px; color: var(--accent); }
     .unlock-list { line-height: 1.6; }

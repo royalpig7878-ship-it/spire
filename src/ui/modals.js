@@ -233,15 +233,86 @@ export function createModals(root) {
       });
     },
 
-    showMenu({ canLoad, onSave, onLoad, onNew }) {
+    // Settings: segmented choices that apply right away. `onChange(key, value)`.
+    showSettings({ settings, onChange, onTutorial, onInstall, canInstall, onClose }) {
+      const SEGMENTS = [
+        { key: 'textScale', label: 'Text size', options: [['Small', 0.9], ['Normal', 1], ['Large', 1.15], ['Huge', 1.3]] },
+        { key: 'sfx', label: 'Sound effects', options: [['On', true], ['Off', false]] },
+        { key: 'music', label: 'Music', options: [['On', true], ['Off', false]] },
+        { key: 'haptics', label: 'Vibration', options: [['On', true], ['Off', false]] },
+        { key: 'aim', label: 'Build aim (touch)', options: [['Under', 'under'], ['Close', 'close'], ['Above', 'above']] },
+        { key: 'colorblind', label: 'Color-blind colors', options: [['Off', false], ['On', true]] },
+        { key: 'graphics', label: 'Graphics', options: [['Auto', 'auto'], ['High', 'high'], ['Saver', 'low']] },
+        { key: 'showFps', label: 'Frame rate', options: [['Hide', false], ['Show', true]] },
+      ];
+      const render = () => {
+        const card = open(`
+          <h2>Settings</h2>
+          ${SEGMENTS.map(
+            (s) => `<div class="setting"><span>${s.label}</span><div class="seg" data-key="${s.key}">${s.options
+              .map(([text, value], i) => `<button type="button" data-i="${i}" class="${settings[s.key] === value ? 'on' : ''}">${text}</button>`)
+              .join('')}</div></div>`,
+          ).join('')}
+          <div class="setting"><span>Volume</span><input type="range" id="set-volume" min="0" max="1" step="0.05" value="${settings.volume}" /></div>
+          <button class="choice" id="set-tutorial" type="button"><span>Replay the tutorial</span></button>
+          ${canInstall ? '<button class="choice" id="set-install" type="button"><span>Install the app on this device</span></button>' : ''}
+          <p class="note">On iPhone: tap Share, then "Add to Home Screen" to install.</p>
+          <button class="primary" id="set-done" type="button">Done</button>`, false);
+        card.querySelectorAll('.seg').forEach((seg) => {
+          const def = SEGMENTS.find((s) => s.key === seg.dataset.key);
+          seg.addEventListener('click', (event) => {
+            const button = event.target.closest('button');
+            if (!button) return;
+            onChange(def.key, def.options[Number(button.dataset.i)][1]);
+            const scroll = card.scrollTop;
+            render();
+            backdrop.querySelector('.card').scrollTop = scroll;
+          });
+        });
+        card.querySelector('#set-volume').addEventListener('input', (e) => onChange('volume', Number(e.target.value)));
+        card.querySelector('#set-tutorial').addEventListener('click', () => {
+          close();
+          onTutorial();
+        });
+        const install = card.querySelector('#set-install');
+        if (install) install.addEventListener('click', onInstall);
+        card.querySelector('#set-done').addEventListener('click', () => {
+          close();
+          onClose();
+        });
+      };
+      render();
+    },
+
+    // A plain "are you sure?" box with one action button and Cancel.
+    showConfirm({ question, yesLabel, onYes }) {
+      const c = open(
+        `<h2>${question}</h2>
+        <button class="primary" id="confirm-yes" type="button">${yesLabel}</button>
+        <button class="secondary" id="confirm-no" type="button">Cancel</button>`,
+        true,
+      );
+      c.querySelector('#confirm-yes').addEventListener('click', () => {
+        close();
+        onYes();
+      });
+      c.querySelector('#confirm-no').addEventListener('click', close);
+    },
+
+    showMenu({ canLoad, onSave, onLoad, onNew, onSettings }) {
       const card = open(
         `<h2>Menu</h2>
         <button class="choice" id="menu-save" type="button"><span>Save game</span></button>
         <button class="choice" id="menu-load" type="button" ${canLoad ? '' : 'disabled'}><span>Load saved game</span></button>
+        <button class="choice" id="menu-settings" type="button"><span>Settings and help</span></button>
         <button class="choice" id="menu-new" type="button"><span>New game</span></button>
         <button class="secondary" id="menu-close" type="button">Close</button>`,
         true,
       );
+      card.querySelector('#menu-settings').addEventListener('click', () => {
+        close();
+        onSettings();
+      });
       const ask = (question, yesLabel, onYes) => {
         const c = open(
           `<h2>${question}</h2>

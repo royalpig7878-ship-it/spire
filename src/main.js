@@ -32,8 +32,18 @@ import { createHud } from './ui/hud.js';
 import { createModals } from './ui/modals.js';
 import { createInfoPanel } from './ui/infopanel.js';
 import { createAlerts } from './ui/alerts.js';
+import { createStoryCard } from './ui/story.js';
+import { createTutorial } from './ui/tutorial.js';
+import { settings, updateSetting, onSettingChange } from './ui/settings.js';
+import { buzz } from './ui/haptics.js';
+import { createAudio } from './audio/audio.js';
+import { tenantAt } from './sim/stories.js';
 import { renderWorld } from './render/world.js';
 import { OVERLAY_MODES } from './render/overlays.js';
+import { applyPalette } from './render/palette.js';
+import { skyAt } from './render/sky.js';
+import { spawnDust, spawnDebris, updateParticles } from './render/particles.js';
+import { hourOfDay } from './sim/clock.js';
 import { formatMoney } from './data/format.js';
 
 const canvas = document.getElementById('game-canvas');
@@ -60,7 +70,67 @@ const ui = {
   selectedId: null, // facility whose info panel is open
   tooltip: null, // { lines, floor, cell, until } quick note after tapping an elevator stop
   districtPreview: null, // { band, themeId, ok, reason, cost } while dragging the district tool
+  storyId: null, // person whose story card is open
+  sawProgress: false, // has the player opened the rating screen (the tutorial asks)
+  lowDetail: false, // battery-saver graphics
+  pops: new Map(), // facility id -> time it was built (for the little pop animation)
+  particles: [], // dust and debris
 };
+
+// ---- Sound, vibration, accessibility and graphics settings ----
+const audio = createAudio(settings);
+const baseDetailMinZoom = config.world.detailMinZoom;
+let autoLow = false; // graphics 'auto' switched itself to battery saver
+const fpsEl = document.createElement('div');
+fpsEl.className = 'fps';
+fpsEl.hidden = true;
+document.body.appendChild(fpsEl);
+
+function setLowDetail(on) {
+  ui.lowDetail = on;
+  config.world.detailMinZoom = baseDetailMinZoom * (on ? 1.7 : 1); // simpler buildings sooner
+  resizeCanvasToFillScreen(); // also lowers the pixel density cap
+}
+
+function applySetting(key) {
+  if (key === 'textScale') document.documentElement.style.setProperty('--text-scale', String(settings.textScale));
+  if (key === 'colorblind') applyPalette(config, settings.colorblind);
+  if (key === 'graphics') setLowDetail(settings.graphics === 'low' || (settings.graphics === 'auto' && autoLow));
+  if (key === 'showFps') fpsEl.hidden = !settings.showFps;
+  audio.applySettings();
+}
+onSettingChange(applySetting);
+
+// Browsers allow sound only after a touch: start the audio on the first one.
+// iPhone only counts the end of a touch (touchend/click) as permission, Android
+// accepts the start, so listen to all of them until the audio is really running.
+const UNLOCK_EVENTS = ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown'];
+function tryUnlockAudio() {
+  audio.unlock();
+  if (audio.isRunning()) UNLOCK_EVENTS.forEach((name) => document.removeEventListener(name, tryUnlockAudio, true));
+}
+UNLOCK_EVENTS.forEach((name) => document.addEventListener(name, tryUnlockAudio, true));
+// A soft click on every on-screen button.
+document.getElementById('ui-root').addEventListener('click', (event) => {
+  if (event.target.closest('button')) {
+    audio.play('click', 0.06);
+    buzz('tap');
+  }
+});
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) audio.suspend();
+  else audio.resume();
+});
+
+// "Install the app" (Android/desktop browsers offer this when the game is hosted over https).
+let installEvent = null;
+window.addEventListener('beforeinstallprompt', (event) => {
+  event.preventDefault();
+  installEvent = event;
+});
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  navigator.serviceWorker.register('./sw.js').catch(() => {}); // offline play; only over https
+}
 
 const toolbar = createToolbar(uiRoot, config, {
   onToolChange(tool) {
@@ -78,8 +148,22 @@ const toolbar = createToolbar(uiRoot, config, {
 });
 const modals = createModals(uiRoot);
 
-// Camera glide: alerts can ask the camera to swing to a place.
+// Camera glide: alerts (and "Follow") can ask the camera to swing to a place.
 let cameraGoal = null; // { x, y, zoom }
+
+// Tap a person to read their story.
+const storyCard = createStoryCard(uiRoot, config, {
+  getGame: () => game,
+  onClose() {
+    ui.storyId = null;
+  },
+  onFollow(on) {
+    if (!on) cameraGoal = null;
+  },
+});
+
+// The first-time tutorial (also replayable from Settings).
+const tutorial = createTutorial(uiRoot, () => ({ game, ui }));
 const alerts = createAlerts(uiRoot, {
   onFocus(alert) {
     const { cellWidth, floorHeight } = config.grid;
@@ -115,6 +199,7 @@ const hud = createHud(uiRoot, config, {
     game.speed = speed;
   },
   onProgress() {
+    ui.sawProgress = true;
     const crownNeed = config.crown.requiresPeople;
     const people = peopleCount(game, config);
     modals.showProgress({
@@ -133,6 +218,21 @@ const hud = createHud(uiRoot, config, {
   },
   onMenu() {
     modals.showMenu({
+      onSettings() {
+        modals.showSettings({
+          settings,
+          onChange: (key, value) => updateSetting(key, value),
+          // The tutorial teaches on an empty plot, so replaying it starts a new tower.
+          onTutorial: () => {
+            const startIt = () => startFreshGame(true);
+            if (game.tower.facilities.size <= 1) startIt(); // nothing built yet: no need to ask
+            else modals.showConfirm({ question: 'The tutorial starts a new, empty tower. Your current tower will be erased.', yesLabel: 'Start tutorial', onYes: startIt });
+          },
+          canInstall: Boolean(installEvent),
+          onInstall: () => installEvent?.prompt(),
+          onClose() {},
+        });
+      },
       canLoad: hasSave(config),
       onSave() {
         toolbar.toast(saveGame(game, config) ? 'Game saved' : 'Could not save');
@@ -141,15 +241,23 @@ const hud = createHud(uiRoot, config, {
         toolbar.toast(loadGame(game, config) ? 'Game loaded' : 'No saved game found');
       },
       onNew() {
-        const fresh = createGame(config);
-        Object.assign(game, fresh);
-        saveGame(game, config); // overwrite the old save right away
-        toolbar.toast('New game started');
+        startFreshGame(!settings.tutorialDone); // new players get the tutorial on their first new game
       },
     });
   },
 });
 if (loadedSave) toolbar.toast('Saved game loaded');
+
+// Wipe the tower and begin again, optionally with the tutorial.
+function startFreshGame(withTutorial) {
+  const fresh = createGame(config);
+  Object.assign(game, fresh);
+  storyCard.hide();
+  ui.sawProgress = false;
+  saveGame(game, config); // overwrite the old save right away
+  if (withTutorial) tutorial.start();
+  else toolbar.toast('New game started');
+}
 
 // ---- Things that need the player's attention (reports, fire sale) ----
 
@@ -188,18 +296,28 @@ function pumpModals() {
   if (modals.isOpen() || modalQueue.length === 0) return;
   const event = modalQueue.shift();
   if (event.type === 'quarterReport') {
+    audio.play(event.report.net >= 0 ? 'kaching' : 'down');
     modals.showReport(event.report, () => {});
   } else if (event.type === 'fireSale') {
+    audio.play('alarm');
     openFireSale();
   } else if (event.type === 'tierUp') {
+    audio.play('fanfare');
+    buzz('celebrate');
     modals.showTierUp(event, () => saveGame(game, config));
   } else if (event.type === 'inspection') {
+    audio.play('error');
     modals.showInspectionResult(event, () => {});
   } else if (event.type === 'vipResult') {
+    audio.play(event.pass ? 'good' : 'error');
     modals.showVipResult(event, () => {});
   } else if (event.type === 'victory') {
+    audio.play('fanfare');
+    buzz('celebrate');
     modals.showVictory(event, () => saveGame(game, config));
   } else if (event.type === 'extortion') {
+    audio.play('notice');
+    buzz('alarm');
     modals.showExtortion(event, {
       onPay: () => toolbar.toast(resolveExtortion(game, config, 'pay').text),
       onTrust: () => {
@@ -219,7 +337,9 @@ let dragAnchor = null; // where a stairs/elevator drag began: { floor, cell }
 function updatePreview(world, pointerType, starting = false) {
   const { cellWidth, floorHeight } = config.grid;
   // On touch screens, aim a little above the fingertip so it isn't hidden.
-  const lift = pointerType === 'touch' ? config.build.touchOffsetPx / camera.zoom : 0;
+  // (The Build aim setting scales that: Under = right at the finger, Close = half, Above = full.)
+  const aimScale = { under: 0, close: 0.5, above: 1 }[settings.aim] ?? 1;
+  const lift = pointerType === 'touch' ? (config.build.touchOffsetPx * aimScale) / camera.zoom : 0;
   const floor = Math.floor(-(world.y - lift) / floorHeight);
   const tower = game.tower;
 
@@ -284,6 +404,14 @@ function facilityUnder(world) {
 
 // Tap an elevator stop: a quick note with the line length and wait times.
 function onTap(world) {
+  // Tapping a person opens their story card.
+  const person = tenantAt(game, config, world);
+  if (person) {
+    ui.storyId = person.id;
+    ui.tooltip = null;
+    storyCard.show(person.id);
+    return;
+  }
   const { floor, cell, facility } = facilityUnder(world);
   ui.tooltip = null;
   if (!facility || config.facilities[facility.type].transport !== 'elevator') return;
@@ -330,7 +458,20 @@ const placementHandlers = {
       const gdef = config.facilities[g.typeId];
       const total = gdef.fixedHeight ? gdef.cost : gdef.cost * g.height;
       toolbar.toast(result.ok ? `Built ${gdef.name}  -${formatMoney(total)}` : result.reason);
-      if (result.ok && gdef.landmark) onCrownBuilt(game, config); // the Crown wins the game
+      if (result.ok) {
+        // A little celebration: pop-up animation, dust, a sound and a buzz.
+        const built = facilityAt(tower, g.floor, g.cell);
+        if (built) {
+          ui.pops.set(built.id, performance.now());
+          spawnDust(ui.particles, config, built);
+        }
+        audio.play('build');
+        buzz('build');
+        if (gdef.landmark) onCrownBuilt(game, config); // the Crown wins the game
+      } else {
+        audio.play('error');
+        buzz('error');
+      }
     } else if (ui.districtPreview) {
       const p = ui.districtPreview;
       const theme = config.districts.themes[p.themeId];
@@ -338,9 +479,19 @@ const placementHandlers = {
       toolbar.toast(
         result.ok ? (p.clear ? 'District removed' : `${theme.label} district  -${formatMoney(p.cost)}`) : result.reason,
       );
+      audio.play(result.ok ? 'good' : 'error');
     } else if (ui.demolishTarget) {
-      const result = demolish(tower, config, ui.demolishTarget.facility);
+      const target = ui.demolishTarget.facility;
+      const result = demolish(tower, config, target);
       toolbar.toast(result.ok ? `Demolished  +${formatMoney(result.refund)}` : result.reason);
+      if (result.ok) {
+        spawnDebris(ui.particles, config, target, config.facilities[target.type].color);
+        audio.play('demolish');
+        buzz('demolish');
+      } else {
+        audio.play('error');
+        buzz('error');
+      }
     } else if (ui.tool.kind === 'demolish') {
       toolbar.toast('Nothing there to demolish');
     }
@@ -357,7 +508,9 @@ let canvasWidthCss = 0;
 let canvasHeightCss = 0;
 
 function resizeCanvasToFillScreen() {
-  const dpr = window.devicePixelRatio || 1; // sharp text on high-density phones
+  // Sharp text on high-density phones, but capped: far more pixels cost far
+  // more time, so battery-saver graphics use a lower cap.
+  const dpr = Math.min(window.devicePixelRatio || 1, ui.lowDetail ? 1.25 : 2);
   canvasWidthCss = window.innerWidth;
   canvasHeightCss = window.innerHeight;
   canvas.width = Math.round(canvasWidthCss * dpr);
@@ -393,6 +546,36 @@ const loop = createGameLoop({
     updateGame(game, config, dtSeconds);
   },
   render(alpha) {
+    // Frame timing: shown if asked, and used by "Auto" graphics to drop to
+    // battery saver when the device cannot keep up.
+    const nowMs = performance.now();
+    const frameMs = nowMs - lastFrameMs;
+    lastFrameMs = nowMs;
+    if (frameMs < 250 && !document.hidden) {
+      avgFrameMs = avgFrameMs * 0.94 + frameMs * 0.06;
+      if (settings.graphics === 'auto' && !ui.lowDetail) {
+        slowFrames = avgFrameMs > 26 ? slowFrames + frameMs : 0;
+        if (slowFrames > 4000) {
+          autoLow = true;
+          setLowDetail(true);
+          toolbar.toast('Battery-saver graphics on (change in Settings)');
+        }
+      }
+    }
+    if (settings.showFps && nowMs - fpsShownAt > 500) {
+      fpsShownAt = nowMs;
+      fpsEl.textContent = `${Math.round(1000 / Math.max(1, avgFrameMs))} fps${ui.lowDetail ? ' (saver)' : ''}`;
+    }
+    const dtSec = Math.min(0.1, frameMs / 1000);
+    updateParticles(ui.particles, dtSec);
+
+    // "Follow" keeps the camera on the chosen person.
+    if (storyCard.following) {
+      const followed = game.tenants.list.find((t) => t.id === storyCard.id);
+      if (followed?.pos) {
+        cameraGoal = { x: followed.pos.x * config.grid.cellWidth, y: -(followed.pos.floor + 0.5) * config.grid.floorHeight, zoom: camera.zoom };
+      }
+    }
     // Glide toward the place an alert pointed at ("Show").
     if (cameraGoal) {
       camera.x += (cameraGoal.x - camera.x) * 0.18;
@@ -406,9 +589,28 @@ const loop = createGameLoop({
     const smooth = game.blocked || game.speed === 0 ? 1 : alpha;
     const cal = calendar(game.clock, config);
     // News from the simulation (fires, inspector notes...) becomes on-screen alerts.
-    for (const alert of game.alerts) alerts.add(alert);
+    for (const alert of game.alerts) {
+      alerts.add(alert);
+      const sound = { fire: 'alarm', power: 'down', good: 'good' }[alert.kind] ?? 'notice';
+      audio.play(sound, 0.5);
+      if (alert.kind === 'fire') buzz('alarm');
+    }
     game.alerts.length = 0;
     alerts.tick();
+
+    // Sounds from inside the tower: only the ones you could see, and not too many.
+    const H = canvasHeightCss;
+    for (const s of game.sfx.splice(0)) {
+      if (camera.zoom < 0.35) continue;
+      if (s.floor !== null) {
+        const sy = (-(s.floor + 0.5) * config.grid.floorHeight - camera.y) * camera.zoom + H / 2;
+        if (sy < 0 || sy > H) continue;
+      }
+      audio.play(s.name, s.name === 'ding' ? 0.18 : 0.3);
+    }
+    audio.setDarkness(skyAt(hourOfDay(game.clock), config).dark);
+    storyCard.refresh();
+    tutorial.tick();
     hud.update({
       funds: game.tower.funds,
       topFloor: tallestFloor(game.tower),
@@ -431,7 +633,18 @@ const loop = createGameLoop({
   },
 });
 
+// Frame timing bookkeeping (see the render function)
+let lastFrameMs = performance.now();
+let avgFrameMs = 16;
+let slowFrames = 0;
+let fpsShownAt = 0;
+
+// Apply the saved settings now that everything exists.
+for (const key of ['textScale', 'colorblind', 'graphics', 'showFps']) applySetting(key);
+// First visit: start the tutorial (not for someone who already has a saved tower).
+if (!settings.tutorialDone && !loadedSave) tutorial.start();
+
 // Handy for testing in the browser console: window.spire.game
-window.spire = { game, config, camera, ui, infoPanel, modals, alerts };
+window.spire = { game, config, camera, ui, infoPanel, modals, alerts, audio, settings, storyCard, tutorial };
 
 loop.start();

@@ -288,11 +288,11 @@ export const config = {
     // jitterMin = schedule wobble; shiftMin = schedule shifted later;
     // reliefMult = how much cafe visits help; crowdMult = bothered by crowds.
     traits: {
-      punctual: { label: 'Punctual', weight: 30, thresholdMult: 0.85, jitterMin: 4, shiftMin: 0, reliefMult: 1, crowdMult: 1, color: '#3b82c4' },
-      impatient: { label: 'Impatient', weight: 20, thresholdMult: 0.6, jitterMin: 35, shiftMin: 0, reliefMult: 1, crowdMult: 1.3, color: '#e8842c' },
-      nightOwl: { label: 'Night Owl', weight: 15, thresholdMult: 1.0, jitterMin: 40, shiftMin: 180, reliefMult: 1, crowdMult: 0.9, color: '#7a5bc4' },
-      social: { label: 'Social', weight: 20, thresholdMult: 1.0, jitterMin: 30, shiftMin: 0, reliefMult: 2, crowdMult: 0.6, color: '#d6559a' },
-      quiet: { label: 'Quiet', weight: 15, thresholdMult: 1.1, jitterMin: 20, shiftMin: 0, reliefMult: 0.7, crowdMult: 0.5, color: '#2e9c8e' },
+      punctual: { label: 'Punctual', desc: 'Always on time, and hates being late.', weight: 30, thresholdMult: 0.85, jitterMin: 4, shiftMin: 0, reliefMult: 1, crowdMult: 1, color: '#3b82c4' },
+      impatient: { label: 'Impatient', desc: 'Gets stressed 40% faster. Hates lines.', weight: 20, thresholdMult: 0.6, jitterMin: 35, shiftMin: 0, reliefMult: 1, crowdMult: 1.3, color: '#e8842c' },
+      nightOwl: { label: 'Night Owl', desc: 'Arrives and leaves late, which smooths the rush.', weight: 15, thresholdMult: 1.0, jitterMin: 40, shiftMin: 180, reliefMult: 1, crowdMult: 0.9, color: '#7a5bc4' },
+      social: { label: 'Social', desc: 'Loves cafes: a visit calms them twice as much.', weight: 20, thresholdMult: 1.0, jitterMin: 30, shiftMin: 0, reliefMult: 2, crowdMult: 0.6, color: '#d6559a' },
+      quiet: { label: 'Quiet', desc: 'Minds noise, but not crowds.', weight: 15, thresholdMult: 1.1, jitterMin: 20, shiftMin: 0, reliefMult: 0.7, crowdMult: 0.5, color: '#2e9c8e' },
     },
 
     // Moving out hurts the tower's reputation (rating tiers in M7 will use it).

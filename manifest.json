@@ -1,0 +1,16 @@
+{
+  "name": "SPIRE",
+  "short_name": "SPIRE",
+  "description": "Build and run a skyscraper, one floor at a time.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "any",
+  "background_color": "#22346e",
+  "theme_color": "#22346e",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -78,6 +78,33 @@ milestone, once you've confirmed it works — never before.
 
 ## Milestone log
 
+- **M8 — Polish and juice.** Tap any person to open a **story card**
+  (name, job, what they are doing, mood, trait) and "Follow" to make the
+  camera track them. Ambient life: clouds, birds, street traffic. Sound
+  effects and a gentle music loop are made live with Web Audio (no audio
+  files). Vibration feedback on phones. A 10-step **tutorial** (replay it
+  from Settings). **Settings** screen: text size, sound, music, volume,
+  vibration, color-blind colors, graphics (Auto / High / Saver), FPS
+  readout. Floating "+$" pops, dust and debris particles, and a funds
+  "hop". Auto battery-saver when frames run slow. The game is now an
+  installable **PWA** (`manifest.json`, `sw.js`, icons made by
+  `node tools/make-icons.mjs`). `node tools/balance-check.mjs` runs a
+  headless 20-day sim.
+
+  **Putting it online (needed for "install to home screen" + offline):**
+  browsers only allow service workers over HTTPS, so the local
+  `http://192.168...` address will not offer install. GitHub Pages gives
+  free HTTPS:
+  1. In GitHub Desktop: File > Add local repository > pick the spire
+     folder, then **Publish repository** (public is required for free Pages).
+  2. On github.com open the repo > Settings > Pages > Source: "Deploy from
+     a branch", Branch: `main`, folder `/ (root)`, Save.
+  3. After a minute it is live at `https://<your-username>.github.io/spire/`.
+  4. On the phone open that address. iPhone: Share > Add to Home Screen.
+     Android: menu > Install app.
+  Each time you commit and push, the live copy updates (the phone fetches
+  the new files the second time you open it).
+
 - **M7 — Ratings, events, weather: the full game loop.** Five tiers
   (Foothold, Rising, Established, Prestigious, Legendary, shown as stars).
   Tap the stars for the progress checklist. Meet a tier's goals and an

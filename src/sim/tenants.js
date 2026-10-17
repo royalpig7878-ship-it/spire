@@ -26,6 +26,7 @@ import { districtBonus } from './districts.js';
 import { coverageOf, noiseOf, trashLevel, amenityRelief, appealOf } from './services.js';
 import { isBurning, isClosed, fireFloors, hasCrisis } from './incidents.js';
 import { weatherFx } from './weather.js';
+import { emit } from './sfx.js';
 
 const DAY = 1440; // minutes per day
 const rnd = (a, b) => a + Math.random() * (b - a);
@@ -256,8 +257,9 @@ function shouldBeInside(t, minuteOfDay) {
     : inWindow(minuteOfDay, t.sched.back, t.sched.leave); // residents and guests
 }
 
-function fx(sys, floor, x, text) {
-  sys.fx.push({ floor, x, text, age: 0 });
+// A little floating message. tone: 'bad' (red, e.g. "Moved out!") or 'gold' (money).
+function fx(sys, floor, x, text, tone = 'bad') {
+  if (sys.fx.length < 30) sys.fx.push({ floor, x, text, tone, age: 0 });
 }
 
 // ---------- Removing tenants ----------
@@ -423,6 +425,8 @@ function finishTrip(game, config, t) {
       game.economy.salesThisQuarter += revenue;
       game.economy.salesByFacility[cafe.id] = (game.economy.salesByFacility[cafe.id] ?? 0) + revenue;
       game.services.visitsToday[cafe.id] = (game.services.visitsToday[cafe.id] ?? 0) + 1;
+      fx(sys, cafe.floor, t.pos.x, `+$${revenue}`, 'gold');
+      emit(game, 'coin', cafe.floor);
       const relief = (def.visitRelief ?? config.tenants.stress.cafeRelief) * config.tenants.traits[t.trait].reliefMult;
       t.stress = Math.max(0, t.stress - relief);
       t.maxedSec = 0;

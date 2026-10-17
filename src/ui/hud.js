@@ -42,6 +42,7 @@ export function createHud(root, config, callbacks) {
   const powerEl = root.querySelector('#hud-power');
   const layerMenu = root.querySelector('#layer-menu');
   let legendKey = '';
+  let lastFunds = Infinity;
 
   // The Layer button opens a short list of overlays to choose from.
   layerMenu.innerHTML = OVERLAY_MODES.map((mode) => {
@@ -87,6 +88,13 @@ export function createHud(root, config, callbacks) {
   return {
     // state: { funds, topFloor, population, mood, dateText, timeText, speed, debtDaysLeft }
     update(state) {
+      // The funds pill gives a little hop whenever money comes in.
+      if (state.funds > lastFunds + 0.5) {
+        fundsEl.classList.remove('bump');
+        void fundsEl.offsetWidth; // restart the CSS animation
+        fundsEl.classList.add('bump');
+      }
+      lastFunds = state.funds;
       setText(fundsEl, formatMoney(state.funds));
       fundsEl.classList.toggle('debt', state.funds < 0);
       setText(popEl, `Pop ${state.population.toLocaleString('en-US')}`);

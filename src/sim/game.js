@@ -31,6 +31,7 @@ export function createGame(config) {
     incidents: createIncidents(), // fires, pests, a power dip, an extortion note...
     progress: createProgress(), // rating tier, inspections, victory
     alerts: [], // short notices for the UI (fires, inspector news...); the UI empties this
+    sfx: [], // sounds the UI may play (elevator dings, shop coins); the UI empties this
     elevators: createElevatorSystem(), // cars and riders (not saved; rebuilt on load)
     demoTraffic: false, // Tools tab toggle: random riders for watching dispatch
     speed: config.time.defaultSpeed,

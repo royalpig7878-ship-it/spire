@@ -39,6 +39,7 @@ import { effectiveStops } from './shafts.js';
 import { shaftCars } from './tower.js';
 import { powerStatus } from './services.js';
 import { outageFactor } from './incidents.js';
+import { emit } from './sfx.js';
 
 const EPS = 1e-6;
 const callKey = (floor, dir) => `${floor}:${dir}`;
@@ -96,6 +97,7 @@ function makeShaft(facility, config, stops) {
     calls: new Map(), // "floor:dir" -> { floor, dir, car }
     waiting: new Map(), // floor -> [riders in line order]
     reassignTimer: 0,
+    pings: [], // floors where a car just arrived (turned into "ding" sounds)
     stats: { completed: 0, totalWait: 0, maxWait: 0 },
     stopWait: new Map(), // floor -> recent average wait (seconds), for the wait overlay
     configKey: '',
@@ -260,6 +262,7 @@ export function updateElevators(game, config, dt) {
       }
     }
     updateShaft(shaft, config, dt);
+    for (const floor of shaft.pings.splice(0)) emit(game, 'ding', floor);
   }
 }
 
@@ -519,6 +522,7 @@ function arrive(shaft, car, F, ec) {
   if (serve !== 0) car.dir = serve;
   car.serveDir = serve;
   car.state = 'opening';
+  if (shaft.pings.length < 8) shaft.pings.push(F);
 }
 
 function openStep(shaft, car, dt, ec) {

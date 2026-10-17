@@ -15,6 +15,8 @@ import {
   roundedRectPath,
 } from './facilities.js';
 import { drawWeather } from './weather.js';
+import { drawSkyLife, drawFlyers } from './ambient.js';
+import { drawParticles } from './particles.js';
 import { calendar } from '../sim/clock.js';
 import { bandRange } from '../sim/districts.js';
 import { trashLevel } from '../sim/services.js';
@@ -48,6 +50,8 @@ export function renderWorld(ctx, W, H, camera, config, game, ui, alpha) {
   // --- Sky (follows the game clock) ---
   const skyState = drawSky(ctx, W, H, hour, config);
   const nightDim = Math.min(1, skyState.dark * config.sky.nightDimStrength);
+  if (!ui.lowDetail) drawSkyLife(ctx, W, H, camera, hour, seconds, skyState.dark); // clouds, birds
+  if (!ui.lowDetail) drawFlyers(ctx, W, H, camera, seconds, skyState.dark); // planes, blimps, balloons...
 
   // --- Ground (dims at night like the buildings) ---
   const groundY = toScreenY(world.groundY);
@@ -172,6 +176,25 @@ export function renderWorld(ctx, W, H, camera, config, game, ui, alpha) {
       express: def.stopMode === 'hubs',
       tileTotal: f.height,
     };
+    // A newly built facility "pops" up from its base with a little bounce.
+    let popped = false;
+    const popAt = ui.pops.get(f.id);
+    if (popAt !== undefined) {
+      const k = (performance.now() - popAt) / 400;
+      if (k >= 1) ui.pops.delete(f.id);
+      else {
+        const c1 = 1.70158;
+        const c3 = c1 + 1;
+        const scale = 0.55 + 0.45 * (1 + c3 * (k - 1) ** 3 + c1 * (k - 1) ** 2); // ease-out-back
+        const cx = x + w / 2;
+        const baseY = slotY(f.floor) + floorPx;
+        ctx.save();
+        ctx.translate(cx, baseY);
+        ctx.scale(scale, scale);
+        ctx.translate(-cx, -baseY);
+        popped = true;
+      }
+    }
     for (let i = 0; i < f.height; i++) {
       const y = slotY(f.floor + i);
       if (y > H || y + floorPx < 0) continue;
@@ -179,6 +202,7 @@ export function renderWorld(ctx, W, H, camera, config, game, ui, alpha) {
       look.isStop = shaft ? shaft.stops.has(f.floor + i) : true; // shafts have a door only at stops
       drawFacility(ctx, f.type, def, x, y, w, floorPx, cellPx, detailed, look);
     }
+    if (popped) ctx.restore();
     // Trouble on the tile: fire, pests, repairs, and (good news) sprinklers.
     if (detailed) {
       const ty = slotY(f.floor + f.height - 1);
@@ -198,11 +222,14 @@ export function renderWorld(ctx, W, H, camera, config, game, ui, alpha) {
     }
   }
 
+  // --- Dust and debris from building and demolishing ---
+  drawParticles(ctx, W, H, camera, ui.particles);
+
   // --- Diagnostic heat-map layer (tints and labels the buildings) ---
   if (ui.overlay !== 'off') drawOverlay(ctx, W, H, camera, config, game, ui.overlay);
 
   // --- People walking, climbing, relaxing at their desks ---
-  drawTenants(ctx, W, H, camera, config, tenants);
+  drawTenants(ctx, W, H, camera, config, tenants, ui.storyId);
 
   // --- Elevator cars, call buttons and waiting riders ---
   drawElevators(ctx, W, H, camera, config, elevators, alpha);
@@ -214,7 +241,7 @@ export function renderWorld(ctx, W, H, camera, config, game, ui, alpha) {
   }
 
   // --- Weather over everything ---
-  drawWeather(ctx, W, H, game.weather.kind, seconds);
+  drawWeather(ctx, W, H, game.weather.kind, seconds, ui.lowDetail ? 0.4 : 1);
 
   // --- Ghost (build preview; may be several floors tall) ---
   if (ui.ghost) {

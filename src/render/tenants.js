@@ -8,7 +8,7 @@
 import { drawFigure, MOOD_COLORS, moodOfStress } from './figures.js';
 import { drawIcon } from './facilities.js';
 
-export function drawTenants(ctx, W, H, camera, config, sys) {
+export function drawTenants(ctx, W, H, camera, config, sys, highlightId = null) {
   const zoom = camera.zoom;
   const { cellWidth, floorHeight } = config.grid;
   const floorPx = floorHeight * zoom;
@@ -42,6 +42,22 @@ export function drawTenants(ctx, W, H, camera, config, sys) {
   }
   ctx.globalAlpha = 1;
 
+  // A pulsing ring around the person whose story card is open
+  const chosen = highlightId === null ? null : sys.list.find((t) => t.id === highlightId);
+  if (chosen && chosen.pos && chosen.mode !== 'away') {
+    const x = toScreenX(chosen.pos.x * cellWidth);
+    const y = toScreenY(-chosen.pos.floor * floorHeight) - floorPx * 0.32;
+    const pulse = 1 + 0.15 * Math.sin(performance.now() / 180);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 3;
+    ctx.shadowColor = 'rgba(0,0,0,0.6)';
+    ctx.shadowBlur = 4;
+    ctx.beginPath();
+    ctx.arc(x, y, Math.max(10, floorPx * 0.5) * pulse, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+
   // Floating "Moved out!" notes
   ctx.font = '700 13px system-ui, sans-serif';
   ctx.textAlign = 'center';
@@ -52,7 +68,8 @@ export function drawTenants(ctx, W, H, camera, config, sys) {
     const alpha = Math.max(0, 1 - f.age / 2.5);
     const w = ctx.measureText(f.text).width + 16;
     ctx.globalAlpha = alpha;
-    ctx.fillStyle = '#c0392b';
+    if (f.tone === 'gold' && zoom < 0.45) continue; // money notes only when zoomed in enough to read
+    ctx.fillStyle = f.tone === 'gold' ? '#b8860b' : '#c0392b';
     ctx.beginPath();
     ctx.roundRect ? ctx.roundRect(x - w / 2, y - 11, w, 22, 11) : ctx.rect(x - w / 2, y - 11, w, 22);
     ctx.fill();

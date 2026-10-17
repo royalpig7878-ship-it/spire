@@ -4,7 +4,8 @@
 // snowflakes, a warm heat haze, or plain cloud cover. Everything is cheap vector
 // shapes placed by a simple formula of the time, so nothing needs storing.
 
-export function drawWeather(ctx, W, H, kind, seconds) {
+// quality: 1 normally; lower in battery-saver mode (fewer drops and flakes).
+export function drawWeather(ctx, W, H, kind, seconds, quality = 1) {
   if (kind === 'clear') return;
   ctx.save();
   if (kind === 'cloudy') {
@@ -18,7 +19,7 @@ export function drawWeather(ctx, W, H, kind, seconds) {
     ctx.strokeStyle = 'rgba(200,220,245,0.55)';
     ctx.lineWidth = 1.4;
     ctx.beginPath();
-    const drops = Math.min(140, Math.round((W * H) / 3500));
+    const drops = Math.min(140, Math.round((W * H) / 3500)) * quality;
     for (let i = 0; i < drops; i++) {
       const x = (i * 97.3) % (W + 40);
       const y = (seconds * 520 + i * 61.7) % (H + 30);
@@ -31,7 +32,7 @@ export function drawWeather(ctx, W, H, kind, seconds) {
     ctx.fillRect(0, 0, W, H);
     drawClouds(ctx, W, H, seconds, 0.4);
     ctx.fillStyle = 'rgba(255,255,255,0.9)';
-    const flakes = Math.min(110, Math.round((W * H) / 4500));
+    const flakes = Math.min(110, Math.round((W * H) / 4500)) * quality;
     for (let i = 0; i < flakes; i++) {
       const x = ((i * 83.1) % W) + Math.sin(seconds * 0.9 + i) * 14;
       const y = (seconds * 55 + i * 47.3) % H;
