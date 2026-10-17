@@ -29,6 +29,7 @@ export function createHud(root, config, callbacks) {
     <div class="hud hud3">
       <button class="pill small tier-btn" id="hud-height" type="button" aria-label="Rating and progress"></button>
       <div class="pill small" id="hud-mood"></div>
+      <button class="pill small" id="hud-goal" type="button" aria-label="Scenario goals" hidden></button>
       <button class="pill small overlay-btn" id="hud-overlay" type="button">${LAYERS_ICON}<span id="hud-overlay-label">Layer: Off</span></button>
     </div>
     <div class="layer-menu" id="layer-menu" hidden></div>
@@ -61,6 +62,9 @@ export function createHud(root, config, callbacks) {
   const fundsEl = root.querySelector('#hud-funds');
   const popEl = root.querySelector('#hud-pop');
   const moodEl = root.querySelector('#hud-mood');
+  const goalEl = root.querySelector('#hud-goal');
+  const hud3 = root.querySelector('.hud3');
+  goalEl.addEventListener('click', callbacks.onGoals);
   const heightEl = root.querySelector('#hud-height');
   const timeEl = root.querySelector('#hud-time');
   const weatherEl = root.querySelector('#hud-weather');
@@ -86,7 +90,8 @@ export function createHud(root, config, callbacks) {
   };
 
   return {
-    // state: { funds, topFloor, population, mood, dateText, timeText, speed, debtDaysLeft }
+    // state: { funds, topFloor, population, mood, dateText, timeText, speed, debtDaysLeft, goal }
+    // `goal` is null outside Career, else { text, done }.
     update(state) {
       // The funds pill gives a little hop whenever money comes in.
       if (state.funds > lastFunds + 0.5) {
@@ -97,6 +102,12 @@ export function createHud(root, config, callbacks) {
       lastFunds = state.funds;
       setText(fundsEl, formatMoney(state.funds));
       fundsEl.classList.toggle('debt', state.funds < 0);
+      goalEl.hidden = !state.goal;
+      hud3.classList.toggle('career', Boolean(state.goal));
+      if (state.goal) {
+        setText(goalEl, state.goal.text);
+        goalEl.classList.toggle('done', state.goal.done);
+      }
       setText(popEl, `Pop ${state.population.toLocaleString('en-US')}`);
       // The stars are the rating; tapping them opens the progress screen.
       setText(heightEl, `${'★'.repeat(state.stars)} ${state.topFloor}/${state.maxFloor}`);

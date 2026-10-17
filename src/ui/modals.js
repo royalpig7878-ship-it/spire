@@ -199,6 +199,53 @@ export function createModals(root) {
       });
     },
 
+    // Career goals checklist (opened from the Goals pill). `status` is modes.scenarioStatus.
+    showGoals(status, onClose) {
+      const num = (g, v) => (g.money ? formatMoney(v) : `${v.toLocaleString('en-US')}${g.suffix}`);
+      const rows = status.goals
+        .map((g) => `<div class="row check ${g.ok ? 'ok' : ''}"><span>${g.ok ? '&#10003;' : '&#9675;'} ${g.label}</span><span>${g.flag ? (g.ok ? 'Done' : 'Not yet') : `${num(g, g.have)} / ${num(g, g.need)}`}</span></div>`)
+        .join('');
+      const timeLine = status.ended
+        ? '<p class="note">This scenario is finished. You are free to keep building.</p>'
+        : `<div class="row"><span>Day</span><span>${Math.min(status.dayNo, status.limit)} of ${status.limit}</span></div>
+           <p class="note">Meet every goal by midnight of day ${status.limit}. A faster finish earns a better medal.</p>`;
+      const card = open(`
+        <h2>${status.spec.name}</h2>
+        <div class="section-label">Goals</div>${rows}
+        ${timeLine}
+        <button class="secondary" id="modal-ok" type="button">Close</button>`);
+      card.querySelector('#modal-ok').addEventListener('click', () => {
+        close();
+        onClose();
+      });
+    },
+
+    // Scenario won or lost. `actions`: { onNext (or null), onRetry, onKeep, onMenu }.
+    showScenarioResult({ won, spec, days, medal, firstTime, limit }, actions) {
+      const names = { gold: 'Gold', silver: 'Silver', bronze: 'Bronze' };
+      const body = won
+        ? `<div class="confetti" aria-hidden="true">${confettiHtml(48)}</div>
+           <h2 class="center big"><span class="medal ${medal}">${names[medal]}</span></h2>
+           <h2 class="center">${spec.name} complete!</h2>
+           <p class="center">You did it in ${days} day${days === 1 ? '' : 's'} (limit ${limit}).${firstTime ? ' A new scenario may have opened.' : ''}</p>`
+        : `<h2 class="center">Time is up</h2>
+           <p class="center">${spec.name}: the ${limit} days ran out before every goal was met. Try again with what you learned.</p>`;
+      const card = open(`
+        ${body}
+        ${won && actions.onNext ? '<button class="primary" id="res-next" type="button">Next scenario</button>' : ''}
+        ${won ? '' : '<button class="primary" id="res-retry" type="button">Try again</button>'}
+        <button class="${won && !actions.onNext ? 'primary' : 'secondary'}" id="res-keep" type="button">Keep playing</button>
+        <button class="secondary" id="res-menu" type="button">Main menu</button>`);
+      const on = (id, fn) => card.querySelector(id)?.addEventListener('click', () => {
+        close();
+        fn();
+      });
+      on('#res-next', actions.onNext ?? (() => {}));
+      on('#res-retry', actions.onRetry);
+      on('#res-keep', actions.onKeep);
+      on('#res-menu', actions.onMenu);
+    },
+
     // Tier checklist (opened from the star badge). `status` is progress.tierStatus.
     showProgress({ tierName, stars, plot, status, inspection, won, crown, onClose }) {
       const rows = status
@@ -285,7 +332,7 @@ export function createModals(root) {
     },
 
     // A plain "are you sure?" box with one action button and Cancel.
-    showConfirm({ question, yesLabel, onYes }) {
+    showConfirm({ question, yesLabel, onYes, onCancel = () => {} }) {
       const c = open(
         `<h2>${question}</h2>
         <button class="primary" id="confirm-yes" type="button">${yesLabel}</button>
@@ -296,7 +343,10 @@ export function createModals(root) {
         close();
         onYes();
       });
-      c.querySelector('#confirm-no').addEventListener('click', close);
+      c.querySelector('#confirm-no').addEventListener('click', () => {
+        close();
+        onCancel();
+      });
     },
 
     showMenu({ canLoad, onSave, onLoad, onNew, onSettings }) {
@@ -305,7 +355,7 @@ export function createModals(root) {
         <button class="choice" id="menu-save" type="button"><span>Save game</span></button>
         <button class="choice" id="menu-load" type="button" ${canLoad ? '' : 'disabled'}><span>Load saved game</span></button>
         <button class="choice" id="menu-settings" type="button"><span>Settings and help</span></button>
-        <button class="choice" id="menu-new" type="button"><span>New game</span></button>
+        <button class="choice" id="menu-new" type="button"><span>Main menu</span></button>
         <button class="secondary" id="menu-close" type="button">Close</button>`,
         true,
       );
@@ -333,9 +383,10 @@ export function createModals(root) {
       card.querySelector('#menu-load').addEventListener('click', () =>
         ask('Replace your current tower with the saved one?', 'Load it', onLoad),
       );
-      card.querySelector('#menu-new').addEventListener('click', () =>
-        ask('Start over? Your current tower will be erased.', 'Start over', onNew),
-      );
+      card.querySelector('#menu-new').addEventListener('click', () => {
+        close();
+        onNew(); // opens the title screen (Continue brings you straight back)
+      });
       card.querySelector('#menu-close').addEventListener('click', close);
     },
   };

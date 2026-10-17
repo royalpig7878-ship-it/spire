@@ -20,6 +20,10 @@ Claude can also start this for you — just ask.
 
 ## How to view it on your phone
 
+> Tip: if the phone shows an old version of the game, start the server with
+> `python tools/serve.py` instead of `python -m http.server 8000`. It tells the
+> browser never to keep old copies, so a refresh always shows the latest.
+
 1. Make sure your phone is on the **same Wi-Fi network** as this computer.
 2. On your phone's browser, go to: `http://192.168.1.243:8000`
    (This is this computer's current address on your home network — if it
@@ -77,6 +81,25 @@ milestone, once you've confirmed it works — never before.
   traits).
 
 ## Milestone log
+
+- **M9 — Sandbox and Career.** Every visit now opens a **title screen**:
+  Continue, Career, Sandbox, Settings. The menu's old "New game" is now
+  "Main menu". **Sandbox** is free play with your own rules: money
+  (Normal / $1 million / Endless), unlocks (start small / everything
+  unlocked at once) and random events on or off. **Career** has five
+  scenarios, each with goals and a day limit: First Floors, Lean Times,
+  Happy Tower, Reach for the Sky, The Crown. A **Goals** pill shows your
+  progress and the days left (tap it for the checklist). You win at the
+  midnight every goal is met; finishing in half the limit or less earns
+  Gold, within 75% Silver, otherwise Bronze. Each scenario opens after you
+  beat the one before. Medals are stored separately from saves
+  (`spire.career`), so a new game never erases them. Saves are now version 5
+  and remember the mode; old saves load as a Sandbox. Everything tunable is
+  in `config.js` under `modes`. Helper scripts: `node tools/modes-check.mjs`
+  (each mode starts correctly and loses cleanly) and
+  `node tools/bot.mjs <scenario-id>` (a simple scripted player used to check
+  the goals are reachable). There is only one save slot: starting a new game
+  replaces it (the game asks first).
 
 - **M8 — Polish and juice.** Tap any person to open a **story card**
   (name, job, what they are doing, mood, trait) and "Follow" to make the

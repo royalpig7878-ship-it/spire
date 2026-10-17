@@ -18,10 +18,13 @@ import { createWeather, rollWeather, weatherFx } from './weather.js';
 import { createIncidents, updateIncidents, dailyIncidents } from './incidents.js';
 import { createProgress, tickProgress, dailyProgress } from './progress.js';
 import { spawnInspector } from './tenants.js';
+import { newMode, applyModeStart, dailyMode, tickMode } from './modes.js';
 
-export function createGame(config) {
+// `options` picks the mode: { kind: 'career', scenario } or { kind: 'sandbox', sandbox: {...} }.
+export function createGame(config, options = {}) {
   const clock = createClock(config);
-  return {
+  const game = {
+    mode: newMode(options.kind ?? 'sandbox', options.scenario ?? null, options.sandbox ?? null),
     tower: createTower(config),
     clock,
     economy: createEconomy(),
@@ -38,6 +41,8 @@ export function createGame(config) {
     blocked: false, // true while a report/offer is waiting for the player
     events: [],
   };
+  applyModeStart(game, config);
+  return game;
 }
 
 // Advance the game by `dtSeconds` of real time.
@@ -51,6 +56,7 @@ export function updateGame(game, config, dtSeconds) {
   updateTenants(game, config, dtSeconds * game.speed);
   updateElevators(game, config, dtSeconds * game.speed);
   tickProgress(game, config, spawnInspector);
+  tickMode(game, config);
 
   let minutesLeft = (dtSeconds * game.speed * MINUTES_PER_DAY) / config.time.dayLengthSeconds;
   const clock = game.clock;
@@ -77,6 +83,7 @@ function onNewDay(game, config) {
   rollWeather(game, config);
   dailyIncidents(game, config);
   dailyProgress(game, config);
+  dailyMode(game, config); // career: win or lose the scenario
 
   // The electricity bill is part of upkeep (a heat wave makes it dearer);
   // recycling and parking earn a little.

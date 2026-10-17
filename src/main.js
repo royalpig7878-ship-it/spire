@@ -24,8 +24,11 @@ import { powerStatus } from './sim/services.js';
 import { installSprinklers, resolveExtortion } from './sim/incidents.js';
 import { tierStatus, onCrownBuilt, peopleCount } from './sim/progress.js';
 import { weatherLabel } from './sim/weather.js';
-import { calendar, formatTime } from './sim/clock.js';
+import { calendar, formatTime, dayIndex } from './sim/clock.js';
 import { saveGame, loadGame, hasSave } from './sim/save.js';
+import { scenarioStatus, scenarioById } from './sim/modes.js';
+import { careerRecords, recordResult } from './sim/career.js';
+import { createTitle } from './ui/title.js';
 import { createInputController } from './ui/input.js';
 import { createToolbar } from './ui/toolbar.js';
 import { createHud } from './ui/hud.js';
@@ -213,6 +216,10 @@ const hud = createHud(uiRoot, config, {
       onClose() {},
     });
   },
+  onGoals() {
+    const status = scenarioStatus(game, config);
+    if (status) modals.showGoals(status, () => {});
+  },
   onOverlay(mode) {
     ui.overlay = OVERLAY_MODES.includes(mode) ? mode : 'off';
   },
@@ -224,7 +231,7 @@ const hud = createHud(uiRoot, config, {
           onChange: (key, value) => updateSetting(key, value),
           // The tutorial teaches on an empty plot, so replaying it starts a new tower.
           onTutorial: () => {
-            const startIt = () => startFreshGame(true);
+            const startIt = () => startFreshGame({ kind: 'sandbox' }, true);
             if (game.tower.facilities.size <= 1) startIt(); // nothing built yet: no need to ask
             else modals.showConfirm({ question: 'The tutorial starts a new, empty tower. Your current tower will be erased.', yesLabel: 'Start tutorial', onYes: startIt });
           },
@@ -241,23 +248,71 @@ const hud = createHud(uiRoot, config, {
         toolbar.toast(loadGame(game, config) ? 'Game loaded' : 'No saved game found');
       },
       onNew() {
-        startFreshGame(!settings.tutorialDone); // new players get the tutorial on their first new game
+        title.show();
       },
     });
   },
 });
-if (loadedSave) toolbar.toast('Saved game loaded');
 
-// Wipe the tower and begin again, optionally with the tutorial.
-function startFreshGame(withTutorial) {
-  const fresh = createGame(config);
+// Wipe the tower and begin again in the chosen mode, optionally with the tutorial.
+function startFreshGame(options, withTutorial) {
+  const fresh = createGame(config, options);
   Object.assign(game, fresh);
   storyCard.hide();
   ui.sawProgress = false;
   saveGame(game, config); // overwrite the old save right away
   if (withTutorial) tutorial.start();
-  else toolbar.toast('New game started');
+  else toolbar.toast(options.kind === 'career' ? `${scenarioById(config, options.scenario).name}: go!` : 'New game started');
 }
+
+// ---- Title screen (Continue / Career / Sandbox) ----
+
+// Replace the current game; ask first when there is a tower worth keeping.
+function requestNewGame(options) {
+  const go = () => {
+    title.hide();
+    startFreshGame(options, !settings.tutorialDone); // first-time players get the tutorial
+  };
+  if (game.tower.facilities.size <= 1 || game.mode.ended) {
+    go();
+    return;
+  }
+  title.hide();
+  modals.showConfirm({ question: 'Start a new game? Your current tower will be erased.', yesLabel: 'Start', onYes: go, onCancel: () => title.show() });
+}
+
+function continueSummary() {
+  const played = game.tower.facilities.size > 1 || dayIndex(game.clock) > 0;
+  if (!played) return null;
+  const day = dayIndex(game.clock) + 1;
+  if (game.mode.kind === 'career') {
+    const spec = scenarioById(config, game.mode.scenario);
+    return `${spec.name} · day ${day} of ${spec.days}`;
+  }
+  return `Sandbox · day ${day}`;
+}
+
+const title = createTitle(uiRoot, config, {
+  getSandboxChoice: () => settings.sandbox,
+  saveSandboxChoice: (choice) => updateSetting('sandbox', choice),
+  continueSummary,
+  onContinue: () => title.hide(),
+  onStart: requestNewGame,
+  onSettings() {
+    title.hide();
+    modals.showSettings({
+      settings,
+      onChange: (key, value) => updateSetting(key, value),
+      onTutorial: () => {
+        title.hide();
+        startFreshGame({ kind: 'sandbox' }, true);
+      },
+      canInstall: Boolean(installEvent),
+      onInstall: () => installEvent?.prompt(),
+      onClose: () => title.show(),
+    });
+  },
+});
 
 // ---- Things that need the player's attention (reports, fire sale) ----
 
@@ -315,6 +370,27 @@ function pumpModals() {
     audio.play('fanfare');
     buzz('celebrate');
     modals.showVictory(event, () => saveGame(game, config));
+  } else if (event.type === 'scenarioWon' || event.type === 'scenarioLost') {
+    const won = event.type === 'scenarioWon';
+    const spec = scenarioById(config, event.id);
+    const index = config.modes.scenarios.indexOf(spec);
+    const next = config.modes.scenarios[index + 1];
+    const firstTime = won && !careerRecords()[spec.id];
+    if (won) recordResult(spec.id, event.medal, event.days);
+    audio.play(won ? 'fanfare' : 'down');
+    if (won) buzz('celebrate');
+    modals.showScenarioResult(
+      { won, spec, days: event.days, medal: event.medal, firstTime, limit: spec.days },
+      {
+        onNext: next ? () => requestNewGame({ kind: 'career', scenario: next.id }) : null,
+        onRetry: () => requestNewGame({ kind: 'career', scenario: spec.id }),
+        onKeep: () => saveGame(game, config),
+        onMenu: () => {
+          saveGame(game, config);
+          title.show(won ? 'career' : 'main');
+        },
+      },
+    );
   } else if (event.type === 'extortion') {
     audio.play('notice');
     buzz('alarm');
@@ -542,7 +618,7 @@ const loop = createGameLoop({
     processEvents();
     pumpModals();
     // The game waits while any pop-up is open (menu, report, fire sale).
-    game.blocked = modals.isOpen() || modalQueue.length > 0;
+    game.blocked = modals.isOpen() || modalQueue.length > 0 || title.isOpen();
     updateGame(game, config, dtSeconds);
   },
   render(alpha) {
@@ -626,12 +702,22 @@ const loop = createGameLoop({
       power: powerStatus(game, config),
       outage: game.incidents.outage,
       debtDaysLeft: Math.max(0, config.economy.debtGraceDays - game.economy.debtDays),
+      goal: goalPill(),
     });
     toolbar.update(game.tower.funds);
     infoPanel.refresh();
     renderWorld(ctx, canvasWidthCss, canvasHeightCss, camera, config, game, ui, smooth);
   },
 });
+
+// The Goals pill text in Career (null in Sandbox).
+function goalPill() {
+  const s = scenarioStatus(game, config);
+  if (!s) return null;
+  const met = s.goals.filter((g) => g.ok).length;
+  const done = s.allMet;
+  return { text: s.ended ? `Goals ${met}/${s.goals.length}` : `Goals ${met}/${s.goals.length} · ${s.daysLeft}d`, done };
+}
 
 // Frame timing bookkeeping (see the render function)
 let lastFrameMs = performance.now();
@@ -641,10 +727,10 @@ let fpsShownAt = 0;
 
 // Apply the saved settings now that everything exists.
 for (const key of ['textScale', 'colorblind', 'graphics', 'showFps']) applySetting(key);
-// First visit: start the tutorial (not for someone who already has a saved tower).
-if (!settings.tutorialDone && !loadedSave) tutorial.start();
+// Every visit starts at the title screen; the tutorial runs when a first-time player starts a game.
+title.show(); // every visit starts at the title screen (Continue resumes the saved tower)
 
 // Handy for testing in the browser console: window.spire.game
-window.spire = { game, config, camera, ui, infoPanel, modals, alerts, audio, settings, storyCard, tutorial };
+window.spire = { game, config, camera, ui, infoPanel, modals, alerts, audio, settings, storyCard, tutorial, title };
 
 loop.start();

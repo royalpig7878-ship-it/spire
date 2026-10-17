@@ -82,7 +82,7 @@ export const config = {
   // --- Saving ---
   save: {
     key: 'spire.save', // localStorage key
-    version: 4, // bump when the save format changes (see src/sim/save.js)
+    version: 5, // bump when the save format changes (see src/sim/save.js)
   },
 
   // --- Build interaction ---
@@ -481,5 +481,105 @@ export const config = {
     // Below this zoom level facilities are drawn as flat blocks (faster,
     // and details would be too tiny to see anyway).
     detailMinZoom: 0.3,
+  },
+
+  // ---- Game modes (M9) ----
+  // Sandbox: free play with your own rules. Career: five scenarios with goals
+  // and a day limit. A scenario is won the midnight all of its goals are met;
+  // finishing sooner earns a better medal. Each one unlocks after the last.
+  modes: {
+    sandbox: {
+      money: [
+        { id: 'standard', label: 'Normal', funds: 30000 },
+        { id: 'rich', label: '$1 million', funds: 1000000 },
+        { id: 'endless', label: 'Endless', funds: 10000000 }, // topped up whenever it runs low
+      ],
+      endlessTopUpBelow: 5000000,
+      tier: [
+        { id: 'normal', label: 'Start small' },
+        { id: 'max', label: 'Everything unlocked' },
+      ],
+      events: [
+        { id: 'on', label: 'On', rate: 1 },
+        { id: 'off', label: 'Off', rate: 0 },
+      ],
+    },
+    // Medal = how much of the day limit you used (bronze = just made it).
+    medals: { gold: 0.5, silver: 0.75 },
+    // Goal kinds: people, stars, funds, mood, reputation, topFloor, crown.
+    scenarios: [
+      {
+        id: 'first-floors',
+        name: 'First Floors',
+        blurb: 'Open your doors and earn your second star.',
+        startFunds: 30000,
+        startTier: 0,
+        days: 45,
+        eventRate: 1,
+        goals: [
+          { kind: 'people', value: 40 },
+          { kind: 'stars', value: 2 },
+        ],
+      },
+      {
+        id: 'lean-times',
+        name: 'Lean Times',
+        blurb: 'Almost no money. Grow it into a small fortune.',
+        startFunds: 12000,
+        startTier: 0,
+        days: 60,
+        eventRate: 1,
+        goals: [
+          { kind: 'funds', value: 35000 },
+          { kind: 'people', value: 30 },
+        ],
+      },
+      {
+        id: 'happy-tower',
+        name: 'Happy Tower',
+        blurb: 'Reach three stars with people who love living here.',
+        startFunds: 40000,
+        startTier: 0,
+        days: 150,
+        eventRate: 1,
+        goals: [
+          { kind: 'stars', value: 3 },
+          { kind: 'mood', value: 75 },
+        ],
+      },
+      {
+        id: 'reach-for-the-sky',
+        name: 'Reach for the Sky',
+        blurb: 'A big plot and a big budget. Go tall, keep them moving.',
+        startFunds: 250000,
+        startTier: 2,
+        days: 120,
+        eventRate: 1,
+        goals: [
+          { kind: 'topFloor', value: 30 },
+          { kind: 'people', value: 1500 },
+        ],
+      },
+      {
+        id: 'the-crown',
+        name: 'The Crown',
+        blurb: 'Rough times and a legend to build. Raise the Crown.',
+        startFunds: 600000,
+        startTier: 3,
+        days: 300,
+        eventRate: 1.5,
+        goals: [{ kind: 'crown', value: 1 }],
+      },
+    ],
+    // The words shown for each goal kind.
+    goalLabels: {
+      people: 'People',
+      stars: 'Stars',
+      funds: 'Funds',
+      mood: 'Mood',
+      reputation: 'Reputation',
+      topFloor: 'Tallest floor',
+      crown: 'Build the Crown',
+    },
   },
 };

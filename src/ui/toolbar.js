@@ -8,6 +8,7 @@
 import { CATEGORIES, facilitiesInCategory } from '../data/facilities.js';
 import { formatMoney } from '../data/format.js';
 import { unlockTier } from '../sim/tower.js';
+import { settings, updateSetting } from './settings.js';
 
 const ICONS = {
   pan:
@@ -28,6 +29,7 @@ export function createToolbar(root, config, callbacks) {
     'beforeend',
     `<div class="toast" id="toast"></div>
     <div class="toolbar">
+      <button class="tb-handle" id="tb-handle" type="button" aria-label="Hide or show the build bar"></button>
       <div class="hint" id="hint"></div>
       <div class="tabs" id="tabs"></div>
       <div class="items" id="items"></div>
@@ -37,6 +39,18 @@ export function createToolbar(root, config, callbacks) {
   // changes height, so publish its height as a CSS variable.
   const toolbarEl = root.querySelector('.toolbar');
   new ResizeObserver(() => root.style.setProperty('--toolbar-h', `${toolbarEl.offsetHeight}px`)).observe(toolbarEl);
+  // The little handle folds the bar away to give the tower more room.
+  const handleEl = root.querySelector('#tb-handle');
+  function applyCollapsed() {
+    toolbarEl.classList.toggle('collapsed', settings.toolbarCollapsed);
+    handleEl.innerHTML = settings.toolbarCollapsed ? '&#9650; Build' : '&#9660;';
+    handleEl.setAttribute('aria-expanded', String(!settings.toolbarCollapsed));
+  }
+  handleEl.addEventListener('click', () => {
+    updateSetting('toolbarCollapsed', !settings.toolbarCollapsed);
+    applyCollapsed();
+  });
+  applyCollapsed();
   const toastEl = root.querySelector('#toast');
   const hintEl = root.querySelector('#hint');
   const tabsEl = root.querySelector('#tabs');

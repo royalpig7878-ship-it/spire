@@ -18,6 +18,7 @@ import { coverageOf, trashLevel, powerStatus } from './services.js';
 import { dayIndex, MINUTES_PER_DAY } from './clock.js';
 import { buildCost, isConnected } from './tower.js';
 import { scheduleVip } from './progress.js';
+import { eventRate } from './modes.js';
 
 export function createIncidents() {
   return {
@@ -276,7 +277,7 @@ export function dailyIncidents(game, config) {
   dailyPests(game, config);
   if (day < ic.graceDays || day - inc.lastEventDay < ic.minDaysBetween) return;
   if (inc.extortion || inc.outage || Object.keys(inc.fires).length) return; // one serious thing at a time
-  if (Math.random() >= ic.chancePerDay) return;
+  if (Math.random() >= ic.chancePerDay * eventRate(game, config)) return; // the mode can dial events up, down or off
 
   const options = Object.entries(ic.weights).filter(([k]) => game.tower.tier >= (ic.fromTier[k] ?? 0));
   let roll = Math.random() * options.reduce((s, [, w]) => s + w, 0);

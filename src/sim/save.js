@@ -12,6 +12,7 @@
 //   2 - adds tenants (people restart "away" and walk in again on load)
 //   3 - adds sky districts (in the tower) and building services (trash levels)
 //   4 - adds the rating tier (in the tower), progress, incidents and weather
+//   5 - adds the game mode (sandbox settings, or the career scenario)
 
 import { serializeTower, restoreTower } from './tower.js';
 import { createElevatorSystem } from './elevators.js';
@@ -21,6 +22,7 @@ import { createServices } from './services.js';
 import { createWeather } from './weather.js';
 import { createIncidents } from './incidents.js';
 import { createProgress } from './progress.js';
+import { newMode } from './modes.js';
 
 export function saveGame(game, config) {
   try {
@@ -44,6 +46,7 @@ export function saveGame(game, config) {
         outage: game.incidents.outage,
         lastEventDay: game.incidents.lastEventDay,
       },
+      mode: JSON.parse(JSON.stringify(game.mode)),
       speed: game.speed,
     };
     localStorage.setItem(config.save.key, JSON.stringify(data));
@@ -77,6 +80,7 @@ export function loadGame(game, config) {
     game.weather = { ...createWeather(), ...(data.weather ?? {}) };
     game.progress = { ...createProgress(), ...(data.progress ?? {}), inspection: null }; // an inspector in mid-visit is rescheduled by the next qualifying day
     game.incidents = { ...createIncidents(), ...(data.incidents ?? {}), extortion: null };
+    game.mode = data.mode ?? newMode('sandbox');
     game.alerts = [];
     game.speed = data.speed ?? config.time.defaultSpeed;
     game.elevators = createElevatorSystem(); // cars restart at their home floors
@@ -101,6 +105,10 @@ function migrate(data, config) {
   }
   if (data.version === 3) {
     data.version = 4; // v3 had no tier, progress, incidents or weather: all start fresh
+  }
+  if (data.version === 4) {
+    data.mode = null; // v4 saves were free play: they load as a normal sandbox
+    data.version = 5;
   }
   return data.version === config.save.version ? data : null;
 }
