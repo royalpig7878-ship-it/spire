@@ -57,7 +57,12 @@ export function createToolbar(root, config, callbacks) {
     render();
   }
 
+  let renderedCategory = null;
   function render() {
+    // Rebuilding the buttons must not snap the scrolled rows back to the start.
+    const tabsScroll = tabsEl.scrollLeft;
+    const itemsScroll = renderedCategory === category ? itemsEl.scrollLeft : 0;
+    renderedCategory = category;
     tabsEl.innerHTML = '';
     for (const cat of CATEGORIES) {
       const b = makeButton('tab' + (cat.id === category ? ' active' : ''), cat.label, () => {
@@ -87,6 +92,28 @@ export function createToolbar(root, config, callbacks) {
           render();
         }),
       );
+    } else if (category === 'districts') {
+      const dc = config.districts;
+      for (const [id, theme] of Object.entries(dc.themes)) {
+        const selected = tool.kind === 'district' && tool.typeId === id;
+        const poor = funds < dc.designationCost;
+        itemsEl.appendChild(
+          makeButton(
+            'item' + (selected ? ' active' : '') + (poor ? ' poor' : ''),
+            `<span class="swatch" style="background:${theme.color};border-color:#fff"></span>
+             <span class="name">${theme.label}</span>
+             <span class="cost">${formatMoney(dc.designationCost)}</span>`,
+            () => selectTool({ kind: 'district', typeId: id }),
+          ),
+        );
+      }
+      itemsEl.appendChild(
+        makeButton(
+          'item' + (tool.kind === 'district' && tool.typeId === 'clear' ? ' active' : ''),
+          `${ICONS.demolish}<span class="name">Remove theme</span>`,
+          () => selectTool({ kind: 'district', typeId: 'clear' }),
+        ),
+      );
     } else {
       for (const def of facilitiesInCategory(config, category)) {
         const selected = tool.kind === 'build' && tool.typeId === def.id;
@@ -101,8 +128,15 @@ export function createToolbar(root, config, callbacks) {
         itemsEl.appendChild(b);
       }
     }
+    tabsEl.scrollLeft = tabsScroll;
+    itemsEl.scrollLeft = itemsScroll;
 
-    if (tool.kind === 'build') {
+    if (tool.kind === 'district') {
+      hintEl.textContent =
+        tool.typeId === 'clear'
+          ? 'Touch a themed band of floors and let go to remove its theme.'
+          : `${config.districts.themes[tool.typeId].hint} Touch a band of ${config.districts.bandFloors} floors and let go.`;
+    } else if (tool.kind === 'build') {
       const def = config.facilities[tool.typeId];
       hintEl.textContent = def.vertical
         ? `Press where it starts, drag up or down for more floors, let go to build ${def.name}.`

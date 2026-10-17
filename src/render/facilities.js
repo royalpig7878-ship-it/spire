@@ -35,6 +35,26 @@ export function drawNoAccessBadge(ctx, x, y, w, h) {
   ctx.textAlign = 'start';
 }
 
+// A little rubbish bin on the top-right corner of a unit that is getting dirty.
+export function drawTrashBadge(ctx, x, y, w, h, level) {
+  const s = Math.max(9, Math.min(h * 0.42, 18));
+  const cx = x + w - s * 0.8;
+  const cy = y + s * 0.8;
+  ctx.fillStyle = level > 85 ? '#a8302b' : '#5c6b78';
+  roundedRectPath(ctx, cx - s * 0.4, cy - s * 0.25, s * 0.8, s * 0.75, s * 0.12);
+  ctx.fill();
+  ctx.fillRect(cx - s * 0.5, cy - s * 0.42, s, s * 0.14); // lid
+  ctx.fillRect(cx - s * 0.14, cy - s * 0.55, s * 0.28, s * 0.14); // handle
+  ctx.strokeStyle = '#e8edf2';
+  ctx.lineWidth = Math.max(1, s * 0.08);
+  ctx.beginPath();
+  ctx.moveTo(cx - s * 0.15, cy - s * 0.05);
+  ctx.lineTo(cx - s * 0.15, cy + s * 0.35);
+  ctx.moveTo(cx + s * 0.15, cy - s * 0.05);
+  ctx.lineTo(cx + s * 0.15, cy + s * 0.35);
+  ctx.stroke();
+}
+
 export function roundedRectPath(ctx, x, y, w, h, r) {
   r = Math.max(0, Math.min(r, w / 2, h / 2));
   ctx.beginPath();
@@ -44,6 +64,153 @@ export function roundedRectPath(ctx, x, y, w, h, r) {
   ctx.arcTo(x, y + h, x, y, r);
   ctx.arcTo(x, y, x + w, y, r);
   ctx.closePath();
+}
+
+// Small vector pictograms for signs. `s` is the icon's half-size in pixels.
+export function drawIcon(ctx, name, cx, cy, s, color) {
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = Math.max(1, s * 0.28);
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  const rr = (x, y, w, h, r) => {
+    roundedRectPath(ctx, x, y, w, h, r);
+    ctx.fill();
+  };
+  switch (name) {
+    case 'cup':
+      ctx.beginPath();
+      ctx.moveTo(cx - s, cy - s * 0.7);
+      ctx.lineTo(cx + s, cy - s * 0.7);
+      ctx.lineTo(cx + s * 0.7, cy + s * 0.8);
+      ctx.lineTo(cx - s * 0.7, cy + s * 0.8);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(cx + s, cy, s * 0.45, -Math.PI / 2, Math.PI / 2);
+      ctx.stroke();
+      break;
+    case 'fork':
+      ctx.beginPath();
+      ctx.moveTo(cx - s * 0.5, cy - s);
+      ctx.lineTo(cx - s * 0.5, cy);
+      ctx.moveTo(cx - s * 0.1, cy - s);
+      ctx.lineTo(cx - s * 0.1, cy);
+      ctx.moveTo(cx + s * 0.3, cy - s);
+      ctx.lineTo(cx + s * 0.3, cy);
+      ctx.moveTo(cx - s * 0.5, cy);
+      ctx.quadraticCurveTo(cx - s * 0.1, cy + s * 0.3, cx + s * 0.3, cy);
+      ctx.moveTo(cx - s * 0.1, cy + s * 0.2);
+      ctx.lineTo(cx - s * 0.1, cy + s);
+      ctx.stroke();
+      break;
+    case 'bag':
+      rr(cx - s * 0.8, cy - s * 0.3, s * 1.6, s * 1.2, s * 0.2);
+      ctx.beginPath();
+      ctx.arc(cx, cy - s * 0.3, s * 0.45, Math.PI, 0);
+      ctx.stroke();
+      break;
+    case 'film':
+      rr(cx - s * 0.9, cy - s * 0.6, s * 1.8, s * 1.3, s * 0.15);
+      ctx.fillStyle = '#ffffff';
+      for (let i = 0; i < 3; i++) ctx.fillRect(cx - s * 0.75 + i * s * 0.6, cy - s * 0.45, s * 0.35, s * 0.3);
+      break;
+    case 'note':
+      ctx.beginPath();
+      ctx.arc(cx - s * 0.35, cy + s * 0.55, s * 0.4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(cx + s * 0.05, cy + s * 0.5);
+      ctx.lineTo(cx + s * 0.05, cy - s * 0.8);
+      ctx.lineTo(cx + s * 0.7, cy - s * 0.4);
+      ctx.stroke();
+      break;
+    case 'cross':
+      rr(cx - s * 0.3, cy - s, s * 0.6, s * 2, s * 0.15);
+      rr(cx - s, cy - s * 0.3, s * 2, s * 0.6, s * 0.15);
+      break;
+    case 'shield':
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - s);
+      ctx.lineTo(cx + s * 0.85, cy - s * 0.6);
+      ctx.lineTo(cx + s * 0.75, cy + s * 0.2);
+      ctx.quadraticCurveTo(cx + s * 0.5, cy + s * 0.8, cx, cy + s);
+      ctx.quadraticCurveTo(cx - s * 0.5, cy + s * 0.8, cx - s * 0.75, cy + s * 0.2);
+      ctx.lineTo(cx - s * 0.85, cy - s * 0.6);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    case 'wrench':
+      ctx.beginPath();
+      ctx.moveTo(cx - s * 0.7, cy + s * 0.7);
+      ctx.lineTo(cx + s * 0.25, cy - s * 0.25);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(cx + s * 0.45, cy - s * 0.45, s * 0.5, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    case 'recycle':
+      for (let i = 0; i < 3; i++) {
+        const a = (i * 2 * Math.PI) / 3 - Math.PI / 2;
+        ctx.beginPath();
+        ctx.arc(cx, cy, s * 0.8, a + 0.2, a + 1.8);
+        ctx.stroke();
+        const ex = cx + Math.cos(a + 1.8) * s * 0.8;
+        const ey = cy + Math.sin(a + 1.8) * s * 0.8;
+        ctx.beginPath();
+        ctx.arc(ex, ey, s * 0.28, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      break;
+    case 'bolt':
+      ctx.beginPath();
+      ctx.moveTo(cx + s * 0.2, cy - s);
+      ctx.lineTo(cx - s * 0.6, cy + s * 0.15);
+      ctx.lineTo(cx - s * 0.05, cy + s * 0.15);
+      ctx.lineTo(cx - s * 0.25, cy + s);
+      ctx.lineTo(cx + s * 0.6, cy - s * 0.2);
+      ctx.lineTo(cx + s * 0.05, cy - s * 0.2);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    case 'car':
+      rr(cx - s, cy - s * 0.1, s * 2, s * 0.7, s * 0.2);
+      rr(cx - s * 0.6, cy - s * 0.65, s * 1.2, s * 0.65, s * 0.25);
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(cx - s * 0.55, cy + s * 0.65, s * 0.28, 0, Math.PI * 2);
+      ctx.arc(cx + s * 0.55, cy + s * 0.65, s * 0.28, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    case 'dumbbell':
+      rr(cx - s * 0.9, cy - s * 0.55, s * 0.35, s * 1.1, s * 0.1);
+      rr(cx + s * 0.55, cy - s * 0.55, s * 0.35, s * 1.1, s * 0.1);
+      rr(cx - s * 0.55, cy - s * 0.15, s * 1.1, s * 0.3, s * 0.1);
+      break;
+    case 'bed':
+      rr(cx - s, cy - s * 0.1, s * 2, s * 0.55, s * 0.15);
+      rr(cx - s, cy - s * 0.6, s * 0.28, s * 1.2, s * 0.1);
+      ctx.beginPath();
+      ctx.arc(cx - s * 0.45, cy - s * 0.2, s * 0.25, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    case 'star':
+      ctx.beginPath();
+      for (let i = 0; i < 10; i++) {
+        const a = -Math.PI / 2 + (i * Math.PI) / 5;
+        const r = i % 2 === 0 ? s : s * 0.45;
+        const px = cx + Math.cos(a) * r;
+        const py = cy + Math.sin(a) * r;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.fill();
+      break;
+    default:
+  }
+  ctx.restore();
 }
 
 // Darkens a "#rrggbb" color by `amount` (0..1) for trims and shadows.
@@ -81,8 +248,9 @@ export function drawFacility(ctx, typeId, def, x, y, w, h, cellPx, detailed, loo
 
   const dark = shade(color, 0.25);
   const cells = Math.max(1, Math.round(w / cellPx));
+  const kind = def.style ?? typeId; // facilities of one style share a drawing
 
-  if (typeId === 'office') {
+  if (kind === 'office') {
     ctx.fillStyle = dark; // roof parapet
     roundedRectPath(ctx, x, y, w, h * 0.12, h * 0.06);
     ctx.fill();
@@ -95,7 +263,8 @@ export function drawFacility(ctx, typeId, def, x, y, w, h, cellPx, detailed, loo
       ctx.fillStyle = shade(accent, 0.18); // window mullion
       ctx.fillRect(wx + cellPx * 0.37, wy, Math.max(1, cellPx * 0.02), h * 0.46);
     }
-  } else if (typeId === 'apartment') {
+  } else if (kind === 'apartment') {
+    if (def.icon) drawIcon(ctx, def.icon, x + w / 2, y + h * 0.09, h * 0.07, accent); // e.g. penthouse star
     for (let i = 0; i < cells; i++) {
       const cx = x + i * cellPx + cellPx / 2;
       const ww = cellPx * 0.42;
@@ -113,7 +282,7 @@ export function drawFacility(ctx, typeId, def, x, y, w, h, cellPx, detailed, loo
       roundedRectPath(ctx, cx - cellPx * 0.3, wy + wh, cellPx * 0.6, h * 0.08, h * 0.03);
       ctx.fill();
     }
-  } else if (typeId === 'cafe') {
+  } else if (kind === 'shop') {
     const awningH = h * 0.3;
     const stripe = cellPx / 2;
     const stripes = Math.ceil(w / stripe);
@@ -133,23 +302,73 @@ export function drawFacility(ctx, typeId, def, x, y, w, h, cellPx, detailed, loo
     ctx.fillStyle = shade(accent, 0.08); // shop window
     roundedRectPath(ctx, x + w * 0.06, y + h * 0.5, w * 0.88, h * 0.38, h * 0.06);
     ctx.fill();
-    // Coffee cup icon
-    const cx = x + w / 2;
-    const cy = y + h * 0.69;
-    const s = h * 0.1;
-    ctx.fillStyle = '#6b4226';
-    ctx.beginPath();
-    ctx.moveTo(cx - s, cy - s * 0.7);
-    ctx.lineTo(cx + s, cy - s * 0.7);
-    ctx.lineTo(cx + s * 0.7, cy + s * 0.8);
-    ctx.lineTo(cx - s * 0.7, cy + s * 0.8);
-    ctx.closePath();
+    drawIcon(ctx, def.icon ?? 'cup', x + w / 2, y + h * 0.69, h * 0.12, shade(color, 0.45));
+  } else if (kind === 'hotel') {
+    // Rows of balcony doors with a bed (or star) sign.
+    for (let i = 0; i < cells; i++) {
+      const dx = x + i * cellPx + cellPx * 0.2;
+      ctx.fillStyle = accent;
+      roundedRectPath(ctx, dx, y + h * 0.3, cellPx * 0.6, h * 0.5, h * 0.05);
+      ctx.fill();
+      ctx.fillStyle = dark;
+      ctx.fillRect(dx - cellPx * 0.04, y + h * 0.62, cellPx * 0.68, h * 0.05); // rail
+    }
+    ctx.fillStyle = dark;
+    roundedRectPath(ctx, x + w / 2 - h * 0.2, y + h * 0.04, h * 0.4, h * 0.22, h * 0.05);
     ctx.fill();
-    ctx.strokeStyle = '#6b4226';
-    ctx.lineWidth = Math.max(1, s * 0.3);
+    drawIcon(ctx, def.icon ?? 'bed', x + w / 2, y + h * 0.15, h * 0.075, accent);
+  } else if (kind === 'service') {
+    // A sturdy block with a big icon; services read as "utility" at a glance.
+    ctx.fillStyle = dark;
+    ctx.fillRect(x, y + h * 0.88, w, h * 0.12); // base strip
+    const panels = Math.max(1, Math.round(w / (cellPx * 1.5)));
+    for (let i = 0; i < panels; i++) {
+      ctx.fillStyle = shade(accent, 0.05);
+      roundedRectPath(ctx, x + (w / panels) * i + w * 0.03, y + h * 0.16, w / panels - w * 0.06, h * 0.64, h * 0.07);
+      ctx.fill();
+    }
+    drawIcon(ctx, def.icon ?? 'cross', x + w / 2, y + h * 0.48, Math.min(h * 0.3, w * 0.28), shade(color, 0.15));
+  } else if (kind === 'atrium') {
+    // Tall glass with a tree: one floor tile of a multi-floor garden.
+    ctx.fillStyle = accent;
+    for (let i = 0; i < cells; i++) {
+      roundedRectPath(ctx, x + i * cellPx + cellPx * 0.1, y + h * 0.08, cellPx * 0.8, h * 0.84, h * 0.06);
+      ctx.fill();
+    }
+    ctx.fillStyle = '#7b5a3c';
+    ctx.fillRect(x + w / 2 - h * 0.03, y + h * 0.55, h * 0.06, h * 0.37);
+    ctx.fillStyle = '#4f9d69';
     ctx.beginPath();
-    ctx.arc(cx + s, cy, s * 0.45, -Math.PI / 2, Math.PI / 2);
+    ctx.arc(x + w / 2, y + h * 0.42, h * 0.26, 0, Math.PI * 2);
+    ctx.arc(x + w / 2 - h * 0.18, y + h * 0.55, h * 0.16, 0, Math.PI * 2);
+    ctx.arc(x + w / 2 + h * 0.18, y + h * 0.55, h * 0.16, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (typeId === 'escalator') {
+    // A diagonal belt with chevrons; flips every other floor like stairs.
+    const flip = (look.tileIndex ?? 0) % 2 === 1;
+    const left = x + w * 0.12;
+    const right = x + w * 0.88;
+    const base = y + h * 0.9;
+    const topY = y + h * 0.14;
+    const mx = (v) => (flip ? left + right - v : v);
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = Math.max(2, h * 0.16);
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(mx(left), base - h * 0.04);
+    ctx.lineTo(mx(right), topY + h * 0.04);
     ctx.stroke();
+    ctx.strokeStyle = shade(color, 0.05);
+    ctx.lineWidth = Math.max(1, h * 0.04);
+    for (let i = 1; i <= 4; i++) {
+      const u = i / 5;
+      const px = left + (right - left) * u;
+      const py = base - (base - topY) * u;
+      ctx.beginPath();
+      ctx.moveTo(mx(px - w * 0.03), py + h * 0.05);
+      ctx.lineTo(mx(px + w * 0.02), py - h * 0.05);
+      ctx.stroke();
+    }
   } else if (typeId === 'stairs') {
     // A flight of steps; every other floor mirrors it so a column zigzags.
     const flip = (look.tileIndex ?? 0) % 2 === 1;
@@ -176,6 +395,23 @@ export function drawFacility(ctx, typeId, def, x, y, w, h, cellPx, detailed, loo
     ctx.moveTo(mx(left), base - h * 0.2);
     ctx.lineTo(mx(right), topY - h * 0.04);
     ctx.stroke();
+  } else if (def.transport === 'elevator' && def.serviceOnly) {
+    // Staff shaft: dark panel with hazard stripes (tenants cannot use it).
+    ctx.fillStyle = shade(color, 0.5);
+    roundedRectPath(ctx, x + w * 0.12, y + h * 0.06, w * 0.76, h * 0.9, h * 0.06);
+    ctx.fill();
+    ctx.save();
+    roundedRectPath(ctx, x + w * 0.12, y + h * 0.06, w * 0.76, h * 0.9, h * 0.06);
+    ctx.clip();
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = Math.max(2, h * 0.09);
+    ctx.beginPath();
+    for (let i = -h; i < w + h; i += h * 0.28) {
+      ctx.moveTo(x + i, y + h);
+      ctx.lineTo(x + i + h * 0.6, y);
+    }
+    ctx.stroke();
+    ctx.restore();
   } else if (def.transport === 'elevator') {
     if (look.isStop === false) {
       // No door on this floor: the shaft is just a wall here.

@@ -41,7 +41,7 @@ export function recordDailyOccupancy(economy, tower, config, occupancyOf) {
 // Rent due at the end of a quarter: each facility's full-quarter rent times
 // the share of days it was occupied (an empty unit pays nothing, a unit built
 // halfway through the quarter only counts the days it existed).
-export function quarterlyRent(tower, config, economy) {
+export function quarterlyRent(tower, config, economy, rentMultOf = () => 1) {
   const dpq = config.time.daysPerQuarter;
   const byType = new Map(); // type -> { type, name, count, rent, days }
   let total = 0;
@@ -50,7 +50,8 @@ export function quarterlyRent(tower, config, economy) {
     const def = config.facilities[f.type];
     if (def.rentPerCell <= 0) continue;
     const days = Math.min(dpq, economy.occupancyDays[f.id] ?? 0);
-    const rent = Math.round((f.width * def.rentPerCell * days) / dpq);
+    // rentMultOf: the synergy bonus from the building's district
+    const rent = Math.round((f.width * def.rentPerCell * days * rentMultOf(f)) / dpq);
 
     const row = byType.get(f.type) ?? { type: f.type, name: def.name, count: 0, rent: 0, days: 0 };
     row.count += 1;

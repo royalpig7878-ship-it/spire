@@ -7,6 +7,8 @@
 
 import { formatMoney } from '../data/format.js';
 import { isConnected, shaftCars } from '../sim/tower.js';
+import { districtBonus } from '../sim/districts.js';
+import { coverageOf, noiseOf, trashLevel, powerStatus, parkingStatus, recyclingCut } from '../sim/services.js';
 import { isEligibleStop, effectiveStops } from '../sim/shafts.js';
 import {
   tenantsOf,
@@ -52,7 +54,7 @@ export function createInfoPanel(root, config, handlers) {
     const def = config.facilities[f.type];
     const top = f.floor + f.height - 1;
     const floors = f.height > 1 ? `Floors ${f.floor}-${top}` : `Floor ${f.floor}`;
-    const isShaft = def.transport === 'elevator';
+    const isShaft = def.transport === 'elevator' && !def.serviceOnly;
 
     sheet.innerHTML = `
       <div class="sheet-head">
@@ -69,15 +71,44 @@ export function createInfoPanel(root, config, handlers) {
 
   // ----- Ordinary facilities -----
 
+  // What a service building does, in plain words (updated live).
+  function serviceNotes(game, f, def) {
+    const lines = [];
+    const top = f.floor + f.height - 1;
+    if (def.serviceKind) {
+      lines.push(`${def.serviceKind[0].toUpperCase()}${def.serviceKind.slice(1)} cover reaches ${def.coverFloors} floors up and down (double on a service elevator's floors).`);
+    }
+    if (def.cleanPerDay) lines.push(`Cleans ${def.cleanPerDay} trash per day from each building it covers.`);
+    if (def.trashCut) lines.push(`Recycling cuts trash tower-wide (tower total now ${Math.round(recyclingCut(game, config) * 100)}%). Earns ${formatMoney(def.dailyIncome)} a day.`);
+    if (def.powerSupply) {
+      const p = powerStatus(game, config);
+      lines.push(`Adds ${def.powerSupply} power. Tower: using ${Math.round(p.demand)} of ${Math.round(p.supply)}${p.ratio < 1 ? ' (SHORTAGE: elevators slowed)' : ''}.`);
+    }
+    if (def.parkingCapacity) {
+      const p = parkingStatus(game, config);
+      lines.push(`Holds ${def.parkingCapacity} cars. Tower: ${p.drivers} drivers, ${p.capacity} spaces. Earns ${formatMoney(config.parking.incomePerCarPerDay)} per car per day.`);
+    }
+    if (def.amenityRelief) lines.push(`Calms people within ${def.amenityReach} floors of floors ${f.floor}-${top}.`);
+    if (def.purposes) lines.push(`Customers come for: ${def.purposes.join(', ')}. ${formatMoney(def.visitRevenue)} per visit.`);
+    if (def.climbSecPerFloor) lines.push('A fast, easy way to move between floors.');
+    return lines;
+  }
+
   function buildFacility(body, f, def) {
     const game = handlers.getGame();
+    const showEnv = Boolean(def.capacity || def.purposes);
     body.innerHTML = `
       ${row('Access', '', 'access')}
       ${def.capacity ? row('Tenants', '', 'tenants') : ''}
       ${def.capacity ? row('Average stress', '', 'stress') : ''}
       ${def.rentPerCell > 0 || def.visitRevenue ? row('Income (per quarter)', '', 'income') : ''}
       ${row('Upkeep (per day)', formatMoney(f.width * f.height * def.upkeepPerCell))}
-      ${def.visitRevenue ? row('Customers now', '', 'visitors') : ''}
+      ${def.purposes ? row('Customers now', '', 'visitors') : ''}
+      ${showEnv ? row('Cover', '', 'cover') : ''}
+      ${showEnv ? row('Trash', '', 'trash') : ''}
+      ${showEnv ? row('Noise from neighbours', '', 'noise') : ''}
+      <div class="note" data-bind="district"></div>
+      <div class="note" data-bind="effects"></div>
       <div class="section-label" id="tenant-title"></div>
       <div id="tenant-list"></div>`;
     const set = (key, html) => {
@@ -87,6 +118,16 @@ export function createInfoPanel(root, config, handlers) {
     updaters.push(() => {
       const connected = isConnected(game.tower, config, f);
       set('access', connected ? 'Connected to the lobby' : '<b class="warn">No route from the lobby</b>');
+      set('effects', serviceNotes(game, f, def).join('<br>'));
+      set('district', districtBonus(game.tower, config, f).notes.join('<br>'));
+      if (showEnv) {
+        const cov = coverageOf(game, config, f);
+        set('cover', `Security ${cov.security} · Medical ${cov.medical} · Maintenance ${cov.maintenance}`);
+        const trash = Math.round(trashLevel(game, f));
+        set('trash', `${trash}%${trash >= config.services.trash.badgeAbove ? ' <b class="warn">(dirty)</b>' : ''}`);
+        const noise = noiseOf(game, config, f);
+        set('noise', noise < 0.5 ? 'quiet' : noise.toFixed(1));
+      }
       const list = tenantsOf(game, f);
       if (def.capacity) {
         const occ = occupancy(game, config, f);
@@ -96,7 +137,7 @@ export function createInfoPanel(root, config, handlers) {
       }
       const income = incomePerQuarter(game, config, f);
       if (income !== null) set('income', formatMoney(income));
-      if (def.visitRevenue) set('visitors', `${game.tenants.visitors.get(f.id) ?? 0} / ${def.visitCapacity}`);
+      if (def.purposes) set('visitors', `${game.tenants.visitors.get(f.id) ?? 0} / ${def.visitCapacity}`);
       const title = body.querySelector('#tenant-title');
       const listEl = body.querySelector('#tenant-list');
       title.textContent = list.length ? 'Tenants' : '';

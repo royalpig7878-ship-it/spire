@@ -149,6 +149,23 @@
     }
     .overlay-btn.active { border-color: var(--accent); color: var(--accent); }
     .hud3 { align-items: center; }
+    .layer-menu {
+      position: absolute;
+      top: calc(max(8px, env(safe-area-inset-top)) + 160px);
+      right: 8px;
+      display: grid;
+      gap: 4px;
+      background: rgba(29, 39, 51, 0.97);
+      border: 1px solid var(--bar-border);
+      border-radius: 16px;
+      padding: 6px;
+      pointer-events: auto;
+      min-width: 180px;
+    }
+    .layer-menu[hidden] { display: none; }
+    .layer-option { min-height: 44px; border-radius: 12px; background: transparent; text-align: left; padding: 0 14px; }
+    .layer-option:active { background: var(--chip-bg); }
+    .power-banner { top: calc(max(8px, env(safe-area-inset-top)) + 192px); background: #b8741a; }
     .legend {
       position: absolute;
       left: 8px;

@@ -9,13 +9,17 @@ import { mixToHex } from './color.js';
 import { roundedRectPath } from './facilities.js';
 import { overlayValue, incomeScale } from '../sim/diagnostics.js';
 
-export const OVERLAY_MODES = ['off', 'stress', 'wait', 'occupancy', 'income'];
+export const OVERLAY_MODES = ['off', 'stress', 'wait', 'occupancy', 'income', 'security', 'medical', 'maintenance', 'noise'];
 
 export const OVERLAY_INFO = {
   stress: { label: 'Stress', ramp: 'bad', low: 'calm', high: 'stressed' },
   wait: { label: 'Wait', ramp: 'bad', low: 'short', high: 'long' },
   occupancy: { label: 'Occupancy', ramp: 'good', low: 'empty', high: 'full' },
   income: { label: 'Income', ramp: 'money', low: 'low', high: 'high' },
+  security: { label: 'Security cover', ramp: 'good', low: 'none', high: 'covered' },
+  medical: { label: 'Medical cover', ramp: 'good', low: 'none', high: 'covered' },
+  maintenance: { label: 'Maintenance cover', ramp: 'good', low: 'none', high: 'covered' },
+  noise: { label: 'Noise', ramp: 'bad', low: 'quiet', high: 'loud' },
 };
 
 // Color along a multi-stop ramp for t in 0..1.

@@ -25,6 +25,7 @@ export function createTower(config) {
     facilities: new Map(), // id -> facility
     cells: new Map(),
     overlay: new Map(),
+    districts: {}, // band number -> theme id (see src/sim/districts.js)
     nextId: 1,
     version: 0, // bumps on every change; lets cached results know when to refresh
   };
@@ -40,7 +41,7 @@ export function createTower(config) {
 // An elevator shaft that stands INSIDE a hall (the lobby or a sky lobby) is
 // stored in the overlay table, on top of the hall's own cells.
 function usesOverlay(tower, config, type, floor, cell) {
-  return config.facilities[type].transport === 'elevator' && hallAt(tower, config, floor, cell);
+  return Boolean(config.facilities[type].transport) && hallAt(tower, config, floor, cell);
 }
 
 function indexFacility(tower, config, f) {
@@ -97,6 +98,7 @@ export function serializeTower(tower) {
   return {
     funds: tower.funds,
     nextId: tower.nextId,
+    districts: { ...tower.districts },
     facilities: Array.from(tower.facilities.values())
       .sort((a, b) => a.id - b.id)
       .map((f) => ({ ...f })),
@@ -111,6 +113,7 @@ export function restoreTower(config, data) {
     facilities: new Map(),
     cells: new Map(),
     overlay: new Map(),
+    districts: { ...(data.districts ?? {}) },
     nextId: data.nextId,
     version: 0,
   };
@@ -210,12 +213,14 @@ export function tallestFloor(tower) {
 
 // ---- Placement rules ----
 
-// A facility on floor 1 or higher must sit fully on top of occupied cells.
-// Floor 0 sits on the ground and is always supported.
+// Above ground a facility must sit fully on top of occupied cells. Floors 0
+// and -1 rest on the ground. Deeper basements hang below the floor above
+// them, which must be occupied.
 function isSupported(tower, floor, cell, width) {
-  if (floor <= 0) return true;
+  if (floor === 0 || floor === -1) return true;
+  const below = floor > 0 ? floor - 1 : floor + 1;
   for (let c = cell; c < cell + width; c++) {
-    if (!isOccupied(tower, floor - 1, c)) return false;
+    if (!isOccupied(tower, below, c)) return false;
   }
   return true;
 }
@@ -230,21 +235,24 @@ export function canPlace(tower, config, typeId, floor, cell, height = 1) {
   const isTransport = Boolean(def.transport);
 
   if (height > 1 && !def.vertical) return { ok: false, reason: 'Only one floor tall' };
+  if (def.minHeight && height < def.minHeight) {
+    return { ok: false, reason: `Needs at least ${def.minHeight} floors` };
+  }
   if (floor < def.minFloor || top > maxFloor) {
     return { ok: false, reason: 'Cannot be built on this floor' };
   }
+  if (floor < config.plot.minFloor) return { ok: false, reason: 'Too deep for your plot' };
   const half = config.plot.halfWidthCells;
   if (cell < -half || cell + width > half) {
     return { ok: false, reason: 'Outside your plot' };
   }
-  const isElevator = def.transport === 'elevator';
   let startsInHall = false; // a shaft that begins inside a hall needs no support of its own
   for (let fl = floor; fl <= top; fl++) {
     let halls = 0;
     let taken = 0;
     for (let c = cell; c < cell + width; c++) {
-      if (isElevator && hallAt(tower, config, fl, c)) {
-        // Shafts may stand INSIDE a hall (lobby / sky lobby), on top of it.
+      if (isTransport && hallAt(tower, config, fl, c)) {
+        // Stairs, escalators and shafts may stand INSIDE a hall (lobby / sky lobby).
         if (tower.overlay.has(cellKey(fl, c))) return { ok: false, reason: 'Space is taken' };
         halls += 1;
       } else if (isOccupied(tower, fl, c)) {
@@ -252,8 +260,8 @@ export function canPlace(tower, config, typeId, floor, cell, height = 1) {
       }
     }
     if (taken) return { ok: false, reason: 'Space is taken' };
-    if (isElevator && halls && halls < width) return { ok: false, reason: 'Does not fit the hall' };
-    if (isElevator && fl === 0 && halls === 0) return { ok: false, reason: 'Must stand in the lobby' };
+    if (isTransport && halls && halls < width) return { ok: false, reason: 'Does not fit the hall' };
+    if (isTransport && fl === 0 && halls === 0) return { ok: false, reason: 'Must stand in the lobby' };
     if (fl === floor) startsInHall = halls > 0;
   }
   if (!startsInHall && !isSupported(tower, floor, cell, width)) {
@@ -263,6 +271,13 @@ export function canPlace(tower, config, typeId, floor, cell, height = 1) {
     // Lobby wings must touch the existing lobby so it stays one hall.
     const touches = isOccupied(tower, 0, cell - 1) || isOccupied(tower, 0, cell + width);
     if (!touches) return { ok: false, reason: 'Must touch the lobby' };
+  }
+
+  // A service shaft is for staff: it only has to start inside a hall.
+  if (def.serviceOnly) {
+    if (!startsInHall) return { ok: false, reason: 'Must start in the lobby or a sky lobby' };
+    if (tower.funds < def.cost * height) return { ok: false, reason: 'Not enough funds' };
+    return { ok: true, reason: '' };
   }
 
   // Must be reachable from the lobby: try it, ask the connectivity check,

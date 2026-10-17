@@ -22,6 +22,8 @@
 import { planRoute } from './routing.js';
 import { requestRide, cancelRider } from './elevators.js';
 import { isConnected } from './tower.js';
+import { districtBonus } from './districts.js';
+import { coverageOf, noiseOf, trashLevel, amenityRelief, appealOf } from './services.js';
 
 const DAY = 1440; // minutes per day
 const rnd = (a, b) => a + Math.random() * (b - a);
@@ -37,6 +39,7 @@ export function createTenantSystem(config, clockMinutes) {
     present: new Map(), // facility id -> how many are inside it right now
     visitors: new Map(), // cafe id -> customers currently dwelling
     counts: new Map(), // floor -> people standing/waiting on it (for crowd stress)
+    effectCache: new Map(), // per-tick cache of what each unit does to its people
     fx: [], // little floating messages ("Moved out!")
     lastHour: Math.floor(clockMinutes / 60),
     moodTimer: 0,
@@ -56,27 +59,31 @@ function pickTrait(config) {
   return traits[0][0];
 }
 
+// Builds a tenant's personal day: when they are in the tower, and which
+// optional venue trips (lunch, shopping, the cinema...) they make.
 function makeSchedule(kind, trait, config) {
-  const sc = config.tenants.schedules;
+  const sc = config.tenants.schedules[kind];
   const tr = config.tenants.traits[trait];
   const jitter = () => rnd(-tr.jitterMin, tr.jitterMin);
   const shift = tr.shiftMin;
+  const sched =
+    kind === 'worker'
+      ? { arrive: wrap(sc.arrive + shift + jitter()), leave: wrap(sc.leave + shift + jitter()) }
+      : { back: wrap(sc.back + shift + jitter()), leave: wrap(sc.leave + shift + jitter()) };
+
   const visits = [];
-  let sched;
-  if (kind === 'worker') {
-    sched = { arrive: wrap(sc.worker.arrive + shift + jitter()), leave: wrap(sc.worker.leave + shift + jitter()) };
-    visits.push({ key: 'lunch', start: wrap(sc.worker.lunch + shift + jitter()), durMin: sc.worker.lunchDurMin });
-    if (trait === 'social') {
-      visits.push({ key: 'break', start: wrap(sc.socialWorkerBreak.start + shift + jitter()), durMin: sc.socialWorkerBreak.durMin });
-    }
-  } else {
-    sched = { back: wrap(sc.resident.back + shift + jitter()), leave: wrap(sc.resident.leave + shift + jitter()) };
-    if (trait === 'social') {
-      visits.push({ key: 'evening', start: wrap(sc.socialEvening.start + shift + jitter()), durMin: sc.socialEvening.durMin });
-    }
+  for (const rule of config.tenants.visitRules) {
+    if (!rule.kinds.includes(kind)) continue;
+    const chance = rule.traitChance?.[trait] ?? rule.chance;
+    if (Math.random() >= chance) continue;
+    visits.push({ key: rule.key, purpose: rule.purpose, start: wrap(rule.start + shift + jitter()), durMin: rule.durMin });
   }
   return { sched, visits };
 }
+
+// Saves from before venues existed stored visits without a purpose.
+const OLD_PURPOSES = { lunch: 'food', break: 'food', evening: 'fun' };
+const fixVisits = (visits) => (visits ?? []).map((v) => ({ purpose: OLD_PURPOSES[v.key] ?? 'food', ...v }));
 
 function registerHome(sys, t) {
   if (!sys.byFacility.has(t.homeId)) sys.byFacility.set(t.homeId, new Set());
@@ -91,7 +98,7 @@ function newTenant(sys, config, facility, extra = {}) {
   while (used.has(slot)) slot++;
   const kind = def.tenantKind;
   const trait = extra.trait ?? pickTrait(config);
-  const made = extra.sched ? { sched: extra.sched, visits: extra.visits } : makeSchedule(kind, trait, config);
+  const made = extra.sched ? { sched: extra.sched, visits: fixVisits(extra.visits) } : makeSchedule(kind, trait, config);
   const t = {
     id: sys.nextId++,
     kind,
@@ -112,8 +119,9 @@ function newTenant(sys, config, facility, extra = {}) {
     task: null, // enter | leave | visit | return
     rider: null, // current elevator ride
     dest: null,
-    cafeId: null,
-    visitDur: [20, 30], // game minutes to stay at a cafe
+    cafeId: null, // the venue they are visiting (any shop, cinema, clinic...)
+    careDay: -1, // last day they went to a clinic
+    visitDur: [20, 30], // game minutes to stay at a venue
     dwellUntil: 0,
     nextTry: 0,
     fails: 0,
@@ -146,7 +154,7 @@ function doorSpot(config) {
 function shouldBeInside(t, minuteOfDay) {
   return t.kind === 'worker'
     ? inWindow(minuteOfDay, t.sched.arrive, t.sched.leave)
-    : inWindow(minuteOfDay, t.sched.back, t.sched.leave);
+    : inWindow(minuteOfDay, t.sched.back, t.sched.leave); // residents and guests
 }
 
 function fx(sys, floor, x, text) {
@@ -213,13 +221,15 @@ function replan(game, config, t) {
   t.legT = 0;
 }
 
-function findCafe(game, config, t) {
+// Nearest, least crowded reachable venue that serves `purpose`
+// (food, shop, fun, fit, care).
+function findVenue(game, config, t, purpose) {
   const sys = game.tenants;
   let best = null;
   let bestScore = Infinity;
   for (const f of game.tower.facilities.values()) {
     const def = config.facilities[f.type];
-    if (!def.visitRevenue || !isConnected(game.tower, config, f)) continue;
+    if (!def.purposes?.includes(purpose) || !isConnected(game.tower, config, f)) continue;
     const here = sys.visitors.get(f.id) ?? 0;
     if (here >= def.visitCapacity) continue;
     const score = Math.abs(f.floor - Math.round(t.pos.floor)) + here * 0.3;
@@ -229,6 +239,39 @@ function findCafe(game, config, t) {
     }
   }
   return best;
+}
+
+// Set off for a venue; returns false if there is no route.
+function beginVisit(game, config, t, venue, durMin) {
+  t.cafeId = venue.id;
+  t.visitDur = durMin;
+  const spot = { floor: venue.floor, x: venue.cell + rnd(0.6, Math.max(0.7, venue.width - 0.6)) };
+  const ok = startTrip(game, config, t, 'visit', homeSpot(game, config, t), spot);
+  if (!ok) t.cafeId = null;
+  return ok;
+}
+
+// What a tenant's own unit does to them each second: calming effects and
+// annoyances. Worked out once per facility per tick.
+function homeEffects(game, config, t) {
+  const sys = game.tenants;
+  let fx = sys.effectCache.get(t.homeId);
+  const f = game.tower.facilities.get(t.homeId);
+  if (!fx) {
+    const sv = config.services;
+    const cov = coverageOf(game, config, f);
+    const district = districtBonus(game.tower, config, f);
+    const noise = Math.max(0, noiseOf(game, config, f) - sv.noise.ignoreBelow) * sv.noise.stressPerSec;
+    const trashShare = Math.max(0, (trashLevel(game, f) - sv.trash.stressAbove) / (100 - sv.trash.stressAbove));
+    fx = {
+      relief: amenityRelief(game, config, f.floor) + district.relief + (cov.medical ? 0.12 : 0) + (cov.security ? 0.08 : 0),
+      noise,
+      trash: trashShare * sv.trash.stressPerSec,
+    };
+    sys.effectCache.set(t.homeId, fx);
+  }
+  const quiet = t.trait === 'quiet' ? config.services.noise.quietMult : 1;
+  return { relief: fx.relief, annoy: fx.noise * quiet + fx.trash };
 }
 
 function finishTrip(game, config, t) {
@@ -252,11 +295,13 @@ function finishTrip(game, config, t) {
         t.pos = homeSpot(game, config, t);
         break;
       }
-      // Customer pays; a cafe visit also calms the tenant down.
-      game.tower.funds += def.visitRevenue;
-      game.economy.salesThisQuarter += def.visitRevenue;
-      game.economy.salesByFacility[cafe.id] = (game.economy.salesByFacility[cafe.id] ?? 0) + def.visitRevenue;
-      const relief = config.tenants.stress.cafeRelief * config.tenants.traits[t.trait].reliefMult;
+      // The customer pays (more in a matching district), and a visit calms them down.
+      const revenue = Math.round(def.visitRevenue * districtBonus(game.tower, config, cafe).salesMult);
+      game.tower.funds += revenue;
+      game.economy.salesThisQuarter += revenue;
+      game.economy.salesByFacility[cafe.id] = (game.economy.salesByFacility[cafe.id] ?? 0) + revenue;
+      game.services.visitsToday[cafe.id] = (game.services.visitsToday[cafe.id] ?? 0) + 1;
+      const relief = (def.visitRelief ?? config.tenants.stress.cafeRelief) * config.tenants.traits[t.trait].reliefMult;
       t.stress = Math.max(0, t.stress - relief);
       t.maxedSec = 0;
       sys.visitors.set(cafe.id, (sys.visitors.get(cafe.id) ?? 0) + 1);
@@ -296,14 +341,16 @@ function stepTravel(game, config, t, dt) {
     addStress(config, t, moved * sc.walkPerCell);
   } else if (leg.type === 'stairs') {
     if (!game.tower.facilities.has(leg.id)) return replan(game, config, t);
-    t.legT += dt / config.tenants.stairSecPerFloor;
+    // Stairs and escalators both land here; escalators are faster and easier.
+    const climbSec = leg.sec ?? config.tenants.stairSecPerFloor;
+    t.legT += dt / climbSec;
     t.pos.x = leg.x;
     t.pos.floor = leg.fromFloor + (leg.toFloor - leg.fromFloor) * Math.min(1, t.legT);
     if (t.legT >= 1) {
       t.pos.floor = leg.toFloor;
       t.legT = 0;
       t.legIdx += 1;
-      addStress(config, t, sc.stairsPerFloor);
+      addStress(config, t, sc.stairsPerFloor * (climbSec < config.tenants.stairSecPerFloor ? 0.25 : 1));
     }
   } else {
     // Elevator leg: join the line, wait, ride, step out.
@@ -345,6 +392,9 @@ function stepTravel(game, config, t, dt) {
     }
   }
 
+  // Passing through an atrium's calming range helps a little.
+  t.stress = Math.max(0, t.stress - amenityRelief(game, config, floorKey) * dt);
+
   if (standing) {
     const next = sys.nextCounts;
     next.set(floorKey, (next.get(floorKey) ?? 0) + 1);
@@ -374,23 +424,28 @@ function updateTenant(game, config, t, dt, minute) {
       break;
 
     case 'home': {
-      t.stress = Math.max(0, t.stress - sc.decayInsidePerSec * dt);
+      // At home: calm down (helped by atria, districts, medical cover), but
+      // noise and trash in the unit wear on people.
+      const fx = homeEffects(game, config, t);
+      t.stress = Math.max(0, t.stress - (sc.decayInsidePerSec + fx.relief) * dt);
+      if (fx.annoy > 0) addStress(config, t, fx.annoy * dt);
       sys.present.set(t.homeId, (sys.present.get(t.homeId) ?? 0) + 1);
       if (minute < t.nextTry) break;
       if (!shouldBeInside(t, mod)) {
         startTrip(game, config, t, 'leave', homeSpot(game, config, t), doorSpot(config));
         break;
       }
+      // Very stressed? Walk to a clinic (checked once a day).
+      if (t.stress >= config.services.careAbove && t.careDay !== day) {
+        t.careDay = day;
+        const clinic = findVenue(game, config, t, 'care');
+        if (clinic && beginVisit(game, config, t, clinic, [25, 40])) break;
+      }
       for (const v of t.visits) {
         if (t.visitDone[v.key] === day || !inWindow(mod, v.start, wrap(v.start + 120))) continue;
-        t.visitDone[v.key] = day; // decide once per day, even if there is no cafe
-        const cafe = findCafe(game, config, t);
-        if (!cafe) continue;
-        t.cafeId = cafe.id;
-        t.visitDur = v.durMin;
-        const def = config.facilities[cafe.type];
-        const spot = { floor: cafe.floor, x: cafe.cell + rnd(0.6, cafe.width - 0.6) };
-        if (def && startTrip(game, config, t, 'visit', homeSpot(game, config, t), spot)) break;
+        t.visitDone[v.key] = day; // decide once per day, even if there is no venue
+        const venue = findVenue(game, config, t, v.purpose);
+        if (venue && beginVisit(game, config, t, venue, v.durMin)) break;
       }
       break;
     }
@@ -438,7 +493,7 @@ function moveInStep(game, config) {
     if (!def.capacity || !isConnected(game.tower, config, f)) continue;
     let count = sys.byFacility.get(f.id)?.size ?? 0;
     while (count < def.capacity && sys.list.length < config.tenants.maxSimulated) {
-      if (Math.random() >= mi.chancePerVacancyPerHour * demand) break;
+      if (Math.random() >= mi.chancePerVacancyPerHour * demand * appealOf(game, config, f)) break;
       const t = newTenant(sys, config, f);
       t.enterAfter = game.clock.minutes + rnd(mi.enterDelayMin[0], mi.enterDelayMin[1]);
       count += 1;
@@ -461,6 +516,7 @@ export function updateTenants(game, config, dt) {
 
   sys.present = new Map();
   sys.nextCounts = new Map();
+  sys.effectCache = new Map();
   for (const t of sys.list) {
     if (t.dead) continue;
     if (!game.tower.facilities.has(t.homeId)) {

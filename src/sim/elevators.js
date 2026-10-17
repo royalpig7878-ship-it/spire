@@ -37,6 +37,7 @@
 
 import { effectiveStops } from './shafts.js';
 import { shaftCars } from './tower.js';
+import { powerStatus } from './services.js';
 
 const EPS = 1e-6;
 const callKey = (floor, dir) => `${floor}:${dir}`;
@@ -137,7 +138,8 @@ function syncShafts(game, config) {
   const shafts = game.elevators.shafts;
   const seen = new Set();
   for (const f of game.tower.facilities.values()) {
-    if (config.facilities[f.type].transport !== 'elevator') continue;
+    const def = config.facilities[f.type];
+    if (def.transport !== 'elevator' || def.serviceOnly) continue; // staff shafts carry no tenants
     seen.add(f.id);
     let shaft = shafts.get(f.id);
     if (!shaft || shaft.bottom !== f.floor || shaft.top !== f.floor + f.height - 1) {
@@ -243,7 +245,13 @@ export function updateElevators(game, config, dt) {
     }
   }
 
-  for (const shaft of sys.shafts.values()) updateShaft(shaft, config, dt);
+  // A power shortage (brownout) slows every car down.
+  const power = powerStatus(game, config);
+  const powerMult = Math.max(config.power.minSpeedFactor, power.ratio);
+  for (const shaft of sys.shafts.values()) {
+    shaft.powerMult = powerMult;
+    updateShaft(shaft, config, dt);
+  }
 }
 
 function updateShaft(shaft, config, dt) {
@@ -421,7 +429,7 @@ function parkingStep(shaft, car, dt, ec) {
     return;
   }
   const dist = car.home - car.pos;
-  const step = ec.car.speedFloorsPerSec * shaft.speedMult * 0.6 * dt; // park gently
+  const step = ec.car.speedFloorsPerSec * shaft.speedMult * (shaft.powerMult ?? 1) * 0.6 * dt; // park gently
   if (Math.abs(dist) <= step) {
     car.pos = car.home;
     car.dir = 0;
@@ -468,7 +476,7 @@ function movingStep(shaft, car, dt, ec) {
     return;
   }
   const dist = stop - car.pos;
-  const step = ec.car.speedFloorsPerSec * shaft.speedMult * dt;
+  const step = ec.car.speedFloorsPerSec * shaft.speedMult * (shaft.powerMult ?? 1) * dt;
   if (Math.abs(dist) <= step) {
     arrive(shaft, car, stop, ec);
   } else {

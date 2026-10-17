@@ -5,7 +5,7 @@
 // then only the text that changed is touched each frame.
 
 import { formatMoney } from '../data/format.js';
-import { OVERLAY_INFO } from '../render/overlays.js';
+import { OVERLAY_INFO, OVERLAY_MODES } from '../render/overlays.js';
 
 const PAUSE_ICON =
   '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
@@ -31,14 +31,32 @@ export function createHud(root, config, callbacks) {
       <div class="pill small" id="hud-mood"></div>
       <button class="pill small overlay-btn" id="hud-overlay" type="button">${LAYERS_ICON}<span id="hud-overlay-label">Layer: Off</span></button>
     </div>
+    <div class="layer-menu" id="layer-menu" hidden></div>
     <div class="legend" id="hud-legend"></div>
-    <div class="debt-banner" id="hud-debt"></div>`,
+    <div class="debt-banner" id="hud-debt"></div>
+    <div class="debt-banner power-banner" id="hud-power"></div>`,
   );
   const overlayBtn = root.querySelector('#hud-overlay');
   const overlayLabel = root.querySelector('#hud-overlay-label');
   const legendEl = root.querySelector('#hud-legend');
-  overlayBtn.addEventListener('click', callbacks.onOverlay);
+  const powerEl = root.querySelector('#hud-power');
+  const layerMenu = root.querySelector('#layer-menu');
   let legendKey = '';
+
+  // The Layer button opens a short list of overlays to choose from.
+  layerMenu.innerHTML = OVERLAY_MODES.map((mode) => {
+    const label = mode === 'off' ? 'Layers off' : OVERLAY_INFO[mode].label;
+    return `<button type="button" class="layer-option" data-mode="${mode}">${label}</button>`;
+  }).join('');
+  overlayBtn.addEventListener('click', () => {
+    layerMenu.hidden = !layerMenu.hidden;
+  });
+  layerMenu.addEventListener('click', (event) => {
+    const button = event.target.closest('.layer-option');
+    if (!button) return;
+    callbacks.onOverlay(button.dataset.mode);
+    layerMenu.hidden = true;
+  });
   const fundsEl = root.querySelector('#hud-funds');
   const popEl = root.querySelector('#hud-pop');
   const moodEl = root.querySelector('#hud-mood');
@@ -74,6 +92,14 @@ export function createHud(root, config, callbacks) {
       // Low mood gets a "!" badge as well as red text (never color alone).
       setText(moodEl, `Mood ${state.mood}%`);
       moodEl.classList.toggle('low', state.mood < 50);
+
+      // Brownout warning: demand has outgrown the power supply
+      if (state.power.ratio < 1) {
+        setText(powerEl, `Power shortage: elevators at ${Math.round(Math.max(config.power.minSpeedFactor, state.power.ratio) * 100)}% speed. Build a substation.`);
+        powerEl.classList.add('show');
+      } else {
+        powerEl.classList.remove('show');
+      }
 
       // Overlay button + color legend
       const info = OVERLAY_INFO[state.overlay];

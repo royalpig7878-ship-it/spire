@@ -2,15 +2,18 @@
 //
 // Static info about the build menu: which category tabs exist and which
 // facility types belong to each. Numbers (cost, size, colors) live in
-// config.js — this file only decides how the menu is organized.
+// catalog.js / config.js — this file only decides how the menu is organized.
 
 export const CATEGORIES = [
   { id: 'tools', label: 'Tools' },
   { id: 'work', label: 'Work' },
   { id: 'living', label: 'Living' },
-  { id: 'commerce', label: 'Commerce' },
+  { id: 'hotel', label: 'Hotel' },
+  { id: 'commerce', label: 'Shops' },
+  { id: 'services', label: 'Services' },
   { id: 'transport', label: 'Transport' },
-  { id: 'lobby', label: 'Lobby' },
+  { id: 'special', label: 'Special' },
+  { id: 'districts', label: 'Districts' },
 ];
 
 // Returns [{ id, ...facilityConfig }] for one category tab.

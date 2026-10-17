@@ -22,6 +22,7 @@ export function hallAt(tower, config, floor, cell) {
 // Is `floor` a place this shaft is allowed to stop? (Used for the settings screen.)
 export function isEligibleStop(tower, config, shaft, floor) {
   const def = config.facilities[shaft.type];
+  if (def.stopMode === 'none') return false;
   if (def.stopMode !== 'hubs') return true;
   for (let c = shaft.cell - 1; c <= shaft.cell + shaft.width; c++) {
     if (hallAt(tower, config, floor, c)) return true;
@@ -32,6 +33,7 @@ export function isEligibleStop(tower, config, shaft, floor) {
 // Sorted list of the floors this shaft stops at right now.
 export function effectiveStops(tower, config, shaft) {
   const def = config.facilities[shaft.type];
+  if (def.stopMode === 'none') return []; // service shafts have no doors for tenants
   const top = shaft.floor + shaft.height - 1;
   const skipped = new Set(shaft.skip ?? []);
   const stops = [];

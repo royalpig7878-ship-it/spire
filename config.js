@@ -5,6 +5,8 @@
 // change later — it should read it from this file instead. That way we
 // can rebalance the game without touching simulation or drawing code.
 
+import { FACILITIES } from './catalog.js';
+
 export const config = {
   // --- Simulation timing ---
   sim: {
@@ -53,7 +55,7 @@ export const config = {
   plot: {
     halfWidthCells: 24, // plot spans cells -24 .. +23
     maxFloor: 10, // highest floor you may build (floor 0 = lobby level)
-    minFloor: -2, // deepest basement (basement facilities arrive later)
+    minFloor: -2, // deepest basement (floor -1 is just under the street)
   },
 
   // --- Lobby ---
@@ -80,7 +82,7 @@ export const config = {
   // --- Saving ---
   save: {
     key: 'spire.save', // localStorage key
-    version: 2, // bump when the save format changes (see src/sim/save.js)
+    version: 3, // bump when the save format changes (see src/sim/save.js)
   },
 
   // --- Build interaction ---
@@ -90,128 +92,99 @@ export const config = {
     touchOffsetPx: 56,
   },
 
-  // --- Facility catalog (M1 subset; the full catalog comes in M6) ---
-  // width: cells wide. cost: build price. minFloor/maxFloor: allowed floors
-  // (maxFloor omitted = plot.maxFloor). color/accent: vector art palette.
-  // rentPerCell: rent per occupied cell per QUARTER. upkeepPerCell: cost per
-  // cell per DAY (before the size scaling in `economy`).
-  facilities: {
-    lobby: {
-      name: 'Lobby wing',
-      category: 'lobby',
-      width: 2,
-      cost: 2000,
-      minFloor: 0,
-      maxFloor: 0,
-      hall: true, // a hall: elevators may stand inside it and stop at it
-      rentPerCell: 0,
-      upkeepPerCell: 3,
-      color: '#cdbfa6',
-      accent: '#8fb7c9',
+  // --- Facility catalog: every building you can build (see catalog.js) ---
+  facilities: FACILITIES,
+
+  // --- Building services: coverage, trash, power, parking, noise ---
+  services: {
+    // How far a service reaches is `coverFloors` in catalog.js. A service
+    // elevator that spans both floors multiplies that reach by this much.
+    serviceElevatorReachMult: 2,
+    // Trash: every tenant and every visit makes some each day. Maintenance
+    // hubs clean the facilities they cover; recycling plants cut how much is made.
+    trash: {
+      perTenantPerDay: 0.9,
+      perVisit: 0.7,
+      basePerDay: 0.4, // even an empty unit gathers a little
+      maxCut: 0.65, // recycling can cut waste by at most this much
+      stressAbove: 50, // trash level where people at home start to mind
+      stressPerSec: 0.12, // stress per second at 100% trash
+      badgeAbove: 60, // show a trash icon on the building above this level
     },
-    office: {
-      name: 'Small office',
-      category: 'work',
-      width: 4,
-      cost: 4000,
-      capacity: 6, // workers who can have a desk here
-      tenantKind: 'worker',
-      minFloor: 1,
-      rentPerCell: 300,
-      upkeepPerCell: 6,
-      color: '#4f7fc9',
-      accent: '#bcd6f7',
+    // Each kind of cover makes a unit more attractive to move into.
+    appeal: { security: 0.08, medical: 0.08, maintenance: 0.12, atrium: 0.1, parking: 0.2, max: 1.8 },
+    // Noise: loud neighbours on nearby floors annoy people at home.
+    noise: {
+      reachFloors: 3, // floors above and below a source that still hear it
+      ignoreBelow: 4, // quiet enough to ignore
+      stressPerSec: 0.03, // per point of noise above the limit
+      quietMult: 1.8, // Quiet tenants mind noise more
     },
-    apartment: {
-      name: 'Apartment',
-      category: 'living',
-      width: 3,
-      cost: 3000,
-      capacity: 3, // residents who can live here
-      tenantKind: 'resident',
-      minFloor: 1,
-      rentPerCell: 300,
-      upkeepPerCell: 6,
-      color: '#e2905b',
-      accent: '#ffe3a3',
-    },
-    cafe: {
-      name: 'Café',
-      category: 'commerce',
-      width: 4,
-      cost: 5000,
-      visitRevenue: 12, // money earned per customer visit
-      visitCapacity: 8, // customers at once
-      minFloor: 1,
-      rentPerCell: 250,
-      upkeepPerCell: 8,
-      color: '#3f9d70',
-      accent: '#f6f1e7',
-    },
-    // --- Transport ---
-    // vertical: true = you drag up/down to choose how many floors it spans;
-    // `cost` and upkeep are then PER FLOOR. transport: what kind of link it is.
-    // A stairwell on floor N joins floor N with the floor below it.
-    stairs: {
-      name: 'Stairwell',
-      category: 'transport',
-      width: 2,
-      cost: 600,
-      minFloor: 1,
-      vertical: true,
-      transport: 'stairs',
-      rentPerCell: 0,
-      upkeepPerCell: 2,
-      color: '#a79b86',
-      accent: '#6f6455',
-    },
-    // An elevator shaft joins every floor it stops at (it may start in the lobby).
-    // stopMode 'all' = stops everywhere (you can switch floors off in its settings).
-    elevator: {
-      name: 'Local elevator',
-      category: 'transport',
-      width: 2,
-      cost: 1800,
-      minFloor: 0,
-      vertical: true,
-      transport: 'elevator',
-      stopMode: 'all',
-      rentPerCell: 0,
-      upkeepPerCell: 5,
-      color: '#66788a',
-      accent: '#e8d9a8',
-    },
-    // Express: faster, bigger cars, but it only stops at its bottom floor and at
-    // "halls" (the lobby and sky lobbies) that it passes through or touches.
-    elevatorExpress: {
-      name: 'Express elevator',
-      category: 'transport',
-      width: 2,
-      cost: 2800,
-      minFloor: 0,
-      vertical: true,
-      transport: 'elevator',
-      stopMode: 'hubs',
-      carSpeedMult: 1.9,
-      carCapacityBonus: 2,
-      rentPerCell: 0,
-      upkeepPerCell: 7,
-      color: '#3d5a80',
-      accent: '#f2c46d',
-    },
-    // A transfer floor: a wide hall where elevators can stop and people change
-    // between express and local shafts. Elevators can run right through it.
-    skylobby: {
-      name: 'Sky lobby',
-      category: 'transport',
-      width: 8,
-      cost: 7000,
-      minFloor: 3,
-      hall: true,
-      rentPerCell: 0,
-      upkeepPerCell: 3,
-      color: '#8fbfb5',
-      accent: '#e9f4ef',
+    // Stressed tenants walk to a clinic once their stress reaches this level.
+    careAbove: 65,
+  },
+
+  power: {
+    defaultPerCell: 0.8, // power drawn per cell per floor (unless a facility says otherwise)
+    baseSupply: 90, // what the city grid gives you for free
+    pricePerUnitPerDay: 0.45, // electricity bill per unit of demand, per day
+    minSpeedFactor: 0.5, // in a brownout elevators slow down, but never below this
+  },
+
+  // Some tenants drive: they need parking, and garages earn a small fee.
+  parking: { driverShare: 0.3, incomePerCarPerDay: 3 },
+
+  // --- Sky districts: every `bandFloors` floors you may theme a band of the tower ---
+  // primary = what the district is FOR; supports = neighbours that make it better.
+  // Each distinct kind of support present adds `perSupport` (up to `maxBonus`).
+  // `weights` say how much of the bonus goes to rent, shop sales, how many
+  // people want to move in, and stress relief.
+  districts: {
+    bandFloors: 15,
+    designationCost: 2500,
+    minFacilities: 3, // a band needs this many buildings before it can be themed
+    supportSalesBonus: 0.15, // supporting shops/cafes earn this much more in a matching district
+    themes: {
+      business: {
+        label: 'Business',
+        color: '#4f7fc9',
+        primary: ['work'],
+        supports: ['food', 'parking', 'security'],
+        perSupport: 0.07,
+        maxBonus: 0.21,
+        weights: { rent: 1, sales: 0.5, appeal: 0.3, relief: 0 },
+        hint: 'Offices earn more rent near cafes, parking and security.',
+      },
+      leisure: {
+        label: 'Leisure',
+        color: '#d6559a',
+        primary: ['fun', 'hospitality'],
+        supports: ['food', 'shop', 'wellness'],
+        perSupport: 0.07,
+        maxBonus: 0.21,
+        weights: { rent: 0.6, sales: 1, appeal: 0.5, relief: 0 },
+        hint: 'Cinemas and hotels do better near food, shops and wellness.',
+      },
+      residential: {
+        label: 'Residential',
+        color: '#e2905b',
+        primary: ['living'],
+        supports: ['shop', 'food', 'wellness', 'security'],
+        perSupport: 0.05,
+        maxBonus: 0.2,
+        weights: { rent: 0.8, sales: 0, appeal: 1, relief: 0.5 },
+        hint: 'Homes are happier near shops, food, gyms and security.',
+      },
+      wellness: {
+        label: 'Wellness',
+        color: '#2e9c8e',
+        primary: ['wellness'],
+        supports: ['living', 'hospitality', 'food'],
+        perSupport: 0.07,
+        maxBonus: 0.21,
+        weights: { rent: 0.4, sales: 1, appeal: 0.4, relief: 1 },
+        hint: 'Gyms and clinics thrive near homes, hotels and food.',
+      },
     },
   },
 
@@ -264,13 +237,26 @@ export const config = {
     },
 
     // Daily routines. Each tenant gets small personal offsets (see traits).
+    // Workers are in the tower between arrive and leave. Residents and hotel
+    // guests are home between `back` and `leave` the next morning.
     schedules: {
-      worker: { arrive: 8 * 60, leave: 17 * 60, lunch: 12 * 60, lunchDurMin: [30, 50] },
+      worker: { arrive: 8 * 60, leave: 17 * 60 },
       resident: { leave: 7.5 * 60, back: 18 * 60 },
-      // Extra cafe trips for Social tenants.
-      socialWorkerBreak: { start: 15.5 * 60, durMin: [20, 30] },
-      socialEvening: { start: 19.5 * 60, durMin: [30, 50] },
+      guest: { leave: 11 * 60, back: 15 * 60 },
     },
+
+    // Optional trips to venues. A rule applies to tenants of the listed kinds;
+    // `chance` is the share of them who do it (a trait can change that).
+    // purpose must match a venue's `purposes` in catalog.js. A trip starts
+    // inside a two-hour window after `start` (minutes after midnight).
+    visitRules: [
+      { key: 'lunch', kinds: ['worker', 'guest'], purpose: 'food', start: 12 * 60, durMin: [30, 50], chance: 1 },
+      { key: 'break', kinds: ['worker'], purpose: 'food', start: 15.5 * 60, durMin: [20, 30], chance: 0, traitChance: { social: 1 } },
+      { key: 'workout', kinds: ['resident', 'worker'], purpose: 'fit', start: 18.25 * 60, durMin: [40, 55], chance: 0.25, traitChance: { social: 0.5, quiet: 0.1 } },
+      { key: 'shopping', kinds: ['resident', 'guest'], purpose: 'shop', start: 18.5 * 60, durMin: [20, 35], chance: 0.35 },
+      { key: 'dinner', kinds: ['resident', 'guest'], purpose: 'food', start: 19 * 60, durMin: [40, 60], chance: 0.25, traitChance: { social: 0.8 } },
+      { key: 'evening', kinds: ['resident', 'guest'], purpose: 'fun', start: 20 * 60, durMin: [70, 100], chance: 0.2, traitChance: { social: 0.7, nightOwl: 0.6 } },
+    ],
 
     // How the route planner compares stairs with elevators (see src/sim/routing.js).
     routing: {
@@ -291,7 +277,7 @@ export const config = {
       crowdPerSec: 0.25, // crowded floor, per extra person over the limit / limit
       decayInsidePerSec: 0.5, // calming down at home or at work
       decayAwayPerSec: 1.5, // calming down while outside the tower
-      cafeRelief: 28, // stress removed by a cafe visit
+      cafeRelief: 28, // stress removed by a visit to a venue that does not say otherwise
       calmBelow: 35, // below this: calm (blue)
       stressedAbove: 70, // above this: stressed (red); in between: impatient (amber)
       maxedLeaveSec: 14, // stress pinned at 100 this long -> they move out

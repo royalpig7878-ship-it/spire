@@ -38,7 +38,7 @@ function getGraph(game, config) {
     const run = reach.runAt(floor, Math.floor(t.x));
     if (run === undefined) return;
     const index = nodes.length;
-    nodes.push({ tid: t.id, kind: t.kind, floor, x: t.x, run });
+    nodes.push({ tid: t.id, kind: t.kind, floor, x: t.x, run, sec: t.sec });
     lookup.set(`${t.id}:${floor}`, index);
     if (!byFloor.has(floor)) byFloor.set(floor, []);
     byFloor.get(floor).push(index);
@@ -49,8 +49,9 @@ function getGraph(game, config) {
   for (const f of tower.facilities.values()) {
     const kind = config.facilities[f.type].transport;
     if (!kind) continue;
-    const t = { id: f.id, kind, x: f.cell + f.width / 2 };
-    if (kind === 'stairs') {
+    if (config.facilities[f.type].serviceOnly) continue; // staff only
+    const t = { id: f.id, kind, x: f.cell + f.width / 2, sec: config.facilities[f.type].climbSecPerFloor ?? config.tenants.stairSecPerFloor };
+    if (kind !== 'elevator') {
       // stairs on floors b..t join floors b-1 .. t
       for (let fl = f.floor - 1; fl < f.floor + f.height; fl++) addNode(t, fl);
     } else {
@@ -152,10 +153,11 @@ export function planRoute(game, config, from, to) {
       const m = nodes[j];
       if (j !== i && m.run === n.run) relax(j, d + Math.abs(m.x - n.x) / walk, i);
     }
-    if (n.kind === 'stairs') {
+    if (n.kind !== 'elevator') {
+      // stairs or escalator: one floor at a time
       for (const g of [n.floor - 1, n.floor + 1]) {
         const j = lookup.get(`${n.tid}:${g}`);
-        if (j !== undefined) relax(j, d + tc.stairSecPerFloor, i);
+        if (j !== undefined) relax(j, d + n.sec, i);
       }
     } else {
       const line = queueLength(game, n.tid, n.floor);
@@ -189,8 +191,8 @@ export function planRoute(game, config, from, to) {
       walkLeg(n.floor, cur.x, n.x);
     } else if (cur.tid === n.tid && cur.floor !== n.floor) {
       legs.push(
-        n.kind === 'stairs'
-          ? { type: 'stairs', id: n.tid, x: n.x, fromFloor: cur.floor, toFloor: n.floor }
+        n.kind !== 'elevator'
+          ? { type: 'stairs', id: n.tid, x: n.x, fromFloor: cur.floor, toFloor: n.floor, sec: n.sec }
           : { type: 'elevator', shaftId: n.tid, x: n.x, fromFloor: cur.floor, toFloor: n.floor },
       );
     } else {

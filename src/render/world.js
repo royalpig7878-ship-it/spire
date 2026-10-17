@@ -4,7 +4,9 @@
 // the placement ghost. It only READS the tower and ui state — it never
 // changes them. (Simulation stays in src/sim.)
 
-import { drawFacility, drawNoAccessBadge, roundedRectPath } from './facilities.js';
+import { drawFacility, drawNoAccessBadge, drawTrashBadge, roundedRectPath } from './facilities.js';
+import { bandRange } from '../sim/districts.js';
+import { trashLevel } from '../sim/services.js';
 import { drawElevators } from './elevators.js';
 import { drawTenants } from './tenants.js';
 import { drawSky } from './sky.js';
@@ -53,8 +55,59 @@ export function renderWorld(ctx, W, H, camera, config, game, ui, alpha) {
   ctx.strokeStyle = world.plotOutlineColor;
   ctx.lineWidth = 2;
   ctx.setLineDash([10, 8]);
-  ctx.strokeRect(plotLeft, plotTop, plotRight - plotLeft, groundY - plotTop);
+  // The plot reaches down through the basement floors too.
+  const plotBottom = slotY(config.plot.minFloor) + floorPx;
+  ctx.strokeRect(plotLeft, plotTop, plotRight - plotLeft, plotBottom - plotTop);
   ctx.restore();
+
+  // --- Sky districts: a tinted, labelled band of floors ---
+  const bandRect = (band) => {
+    const { first, last } = bandRange(config, band);
+    const topFloor = Math.min(last, config.plot.maxFloor);
+    if (first > config.plot.maxFloor) return null;
+    return { x: plotLeft, y: slotY(topFloor), w: plotRight - plotLeft, h: slotY(first - 1) - slotY(topFloor) };
+  };
+  const drawBand = (band, color, label, alpha, dashed = false) => {
+    const r = bandRect(band);
+    if (!r || r.y > H || r.y + r.h < 0) return;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = color;
+    ctx.fillRect(r.x, r.y, r.w, r.h);
+    ctx.globalAlpha = 0.9;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    ctx.setLineDash(dashed ? [10, 6] : []);
+    ctx.beginPath();
+    ctx.moveTo(r.x, r.y);
+    ctx.lineTo(r.x + r.w, r.y);
+    ctx.moveTo(r.x, r.y + r.h);
+    ctx.lineTo(r.x + r.w, r.y + r.h);
+    ctx.stroke();
+    ctx.restore();
+    // label pill on the left edge of the band
+    ctx.font = '700 12px system-ui, sans-serif';
+    ctx.textBaseline = 'middle';
+    const tw = ctx.measureText(label).width + 16;
+    const px = Math.max(4, r.x + 4);
+    const py = Math.max(4, Math.min(H - 30, r.y + 6));
+    ctx.fillStyle = color;
+    roundedRectPath(ctx, px, py, tw, 20, 10);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(label, px + 8, py + 10);
+  };
+  for (const [bandKey, themeId] of Object.entries(tower.districts)) {
+    const theme = config.districts.themes[themeId];
+    if (theme) drawBand(Number(bandKey), theme.color, `${theme.label} district`, 0.1);
+  }
+  if (ui.districtPreview) {
+    const p = ui.districtPreview;
+    const theme = config.districts.themes[p.themeId];
+    const color = p.clear ? '#888888' : (theme?.color ?? '#888888');
+    const label = p.ok ? (p.clear ? 'Remove district' : `${theme.label}  ${formatMoney(p.cost)}`) : p.reason;
+    drawBand(p.band, p.ok ? color : world.invalidColor, label, 0.22, true);
+  }
 
   // --- Cell grid (only while a build/demolish tool is active) ---
   if (ui.tool.kind !== 'pan') {
@@ -66,9 +119,9 @@ export function renderWorld(ctx, W, H, camera, config, game, ui, alpha) {
     for (let c = firstCol; c <= lastCol; c++) {
       const x = Math.round(slotX(c)) + 0.5;
       ctx.moveTo(x, Math.max(0, plotTop));
-      ctx.lineTo(x, Math.min(H, groundY));
+      ctx.lineTo(x, Math.min(H, plotBottom));
     }
-    for (let f = 0; f <= config.plot.maxFloor + 1; f++) {
+    for (let f = config.plot.minFloor; f <= config.plot.maxFloor + 1; f++) {
       const y = Math.round(toScreenY(-f * floorHeight)) + 0.5;
       if (y < 0 || y > H) continue;
       ctx.moveTo(Math.max(0, plotLeft), y);
@@ -111,6 +164,10 @@ export function renderWorld(ctx, W, H, camera, config, game, ui, alpha) {
     }
     if (!connected && !def.transport && detailed) {
       drawNoAccessBadge(ctx, x, slotY(f.floor), w, floorPx);
+    }
+    const trash = trashLevel(game, f);
+    if (detailed && trash >= config.services.trash.badgeAbove) {
+      drawTrashBadge(ctx, x, slotY(f.floor), w, floorPx, trash);
     }
   }
 

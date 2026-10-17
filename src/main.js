@@ -19,6 +19,8 @@ import {
   toggleShaftStop,
 } from './sim/tower.js';
 import { stopWaitSeconds } from './sim/diagnostics.js';
+import { bandOf, designateDistrict, applyDistrict, clearDistrict } from './sim/districts.js';
+import { powerStatus } from './sim/services.js';
 import { calendar, formatTime } from './sim/clock.js';
 import { saveGame, loadGame, hasSave } from './sim/save.js';
 import { createInputController } from './ui/input.js';
@@ -53,6 +55,7 @@ const ui = {
   overlay: 'off', // diagnostic heat-map layer: off | stress | wait | occupancy | income
   selectedId: null, // facility whose info panel is open
   tooltip: null, // { lines, floor, cell, until } quick note after tapping an elevator stop
+  districtPreview: null, // { band, themeId, ok, reason, cost } while dragging the district tool
 };
 
 const toolbar = createToolbar(uiRoot, config, {
@@ -60,6 +63,7 @@ const toolbar = createToolbar(uiRoot, config, {
     ui.tool = tool;
     ui.ghost = null;
     ui.demolishTarget = null;
+    ui.districtPreview = null;
   },
   getDemo: () => game.demoTraffic,
   onDemoToggle() {
@@ -87,9 +91,8 @@ const hud = createHud(uiRoot, config, {
   onSpeed(speed) {
     game.speed = speed;
   },
-  onOverlay() {
-    const next = (OVERLAY_MODES.indexOf(ui.overlay) + 1) % OVERLAY_MODES.length;
-    ui.overlay = OVERLAY_MODES[next];
+  onOverlay(mode) {
+    ui.overlay = OVERLAY_MODES.includes(mode) ? mode : 'off';
   },
   onMenu() {
     modals.showMenu({
@@ -185,6 +188,17 @@ function updatePreview(world, pointerType, starting = false) {
       const check = canPlace(tower, config, typeId, floor, cell);
       ui.ghost = { typeId, floor, cell, height: 1, ok: check.ok, reason: check.reason };
     }
+  } else if (ui.tool.kind === 'district') {
+    // Aim at a band of floors; basements and floors above the plot do not count.
+    const band = bandOf(config, Math.max(0, Math.min(config.plot.maxFloor, floor)));
+    const themeId = ui.tool.typeId;
+    if (themeId === 'clear') {
+      const has = Boolean(tower.districts[band]);
+      ui.districtPreview = { band, themeId, clear: true, ok: has, reason: 'No district here', cost: 0 };
+    } else {
+      const check = designateDistrict(tower, config, band, themeId);
+      ui.districtPreview = { band, themeId, clear: false, ok: check.ok, reason: check.reason, cost: check.cost ?? 0 };
+    }
   } else if (ui.tool.kind === 'demolish') {
     const target = facilityAt(tower, floor, Math.floor(world.x / cellWidth));
     if (!target) {
@@ -204,6 +218,7 @@ function updatePreview(world, pointerType, starting = false) {
 function clearPreview() {
   ui.ghost = null;
   ui.demolishTarget = null;
+  ui.districtPreview = null;
   dragAnchor = null;
 }
 
@@ -261,6 +276,13 @@ const placementHandlers = {
       const total = config.facilities[g.typeId].cost * g.height;
       toolbar.toast(
         result.ok ? `Built ${config.facilities[g.typeId].name}  -${formatMoney(total)}` : result.reason,
+      );
+    } else if (ui.districtPreview) {
+      const p = ui.districtPreview;
+      const theme = config.districts.themes[p.themeId];
+      const result = p.clear ? clearDistrict(tower, p.band) : applyDistrict(tower, config, p.band, p.themeId);
+      toolbar.toast(
+        result.ok ? (p.clear ? 'District removed' : `${theme.label} district  -${formatMoney(p.cost)}`) : result.reason,
       );
     } else if (ui.demolishTarget) {
       const result = demolish(tower, config, ui.demolishTarget.facility);
@@ -331,6 +353,7 @@ const loop = createGameLoop({
       timeText: formatTime(game.clock),
       speed: game.speed,
       overlay: ui.overlay,
+      power: powerStatus(game, config),
       debtDaysLeft: Math.max(0, config.economy.debtGraceDays - game.economy.debtDays),
     });
     toolbar.update(game.tower.funds);

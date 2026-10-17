@@ -58,7 +58,7 @@ export function createModals(root) {
             .join('')
         : '<div class="row muted"><span>No rent this quarter</span><span>$0</span></div>';
       const salesRow = report.sales
-        ? `<div class="row"><span>Customer sales</span><span>+${formatMoney(report.sales)}</span></div>`
+        ? `<div class="row"><span>Sales and fees</span><span>+${formatMoney(report.sales)}</span></div>`
         : '';
       const leftRow = report.moveOuts
         ? `<div class="row muted"><span>Tenants moved out so far</span><span>${report.moveOuts}</span></div>`

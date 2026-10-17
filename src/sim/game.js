@@ -12,6 +12,8 @@ import { createElevatorSystem, updateElevators } from './elevators.js';
 import { createClock, calendar, dayIndex, MINUTES_PER_DAY } from './clock.js';
 import { createEconomy, dailyUpkeep, quarterlyRent, recordDailyOccupancy } from './economy.js';
 import { createTenantSystem, updateTenants, dailyTenantUpdate, occupancyOf } from './tenants.js';
+import { createServices, dailyServicesUpdate, powerStatus } from './services.js';
+import { districtBonus } from './districts.js';
 
 export function createGame(config) {
   const clock = createClock(config);
@@ -20,6 +22,7 @@ export function createGame(config) {
     clock,
     economy: createEconomy(),
     tenants: createTenantSystem(config, clock.minutes), // the people (saved in simple form)
+    services: createServices(), // trash levels and other building-service state
     elevators: createElevatorSystem(), // cars and riders (not saved; rebuilt on load)
     demoTraffic: false, // Tools tab toggle: random riders for watching dispatch
     speed: config.time.defaultSpeed,
@@ -59,9 +62,14 @@ function onNewDay(game, config) {
   const { tower, economy, clock } = game;
 
   // 1. Pay today's upkeep, and note how full each rentable unit was today.
-  const upkeep = dailyUpkeep(tower, config);
+  // The electricity bill is part of upkeep; recycling and parking earn a little.
+  const power = powerStatus(game, config);
+  const upkeep = dailyUpkeep(tower, config) + Math.round(power.demand * config.power.pricePerUnitPerDay);
   tower.funds -= upkeep;
   economy.upkeepThisQuarter += upkeep;
+  const serviceIncome = dailyServicesUpdate(game, config);
+  tower.funds += serviceIncome;
+  economy.salesThisQuarter += serviceIncome;
   recordDailyOccupancy(economy, tower, config, (f) => occupancyOf(game, config, f));
   dailyTenantUpdate(game, config);
 
@@ -70,7 +78,7 @@ function onNewDay(game, config) {
   const newDay0 = dayIndex(clock);
   if (newDay0 > 0 && newDay0 % dpq === 0) {
     const endMinute = clock.minutes;
-    const rent = quarterlyRent(tower, config, economy);
+    const rent = quarterlyRent(tower, config, economy, (f) => districtBonus(tower, config, f).rentMult);
     const fundsBefore = tower.funds;
     tower.funds += rent.total;
 

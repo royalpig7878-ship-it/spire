@@ -67,6 +67,8 @@ milestone, once you've confirmed it works — never before.
 - `config.js` — every tunable number in the game (costs, speeds,
   thresholds), with comments. This is the first place to look to change
   game balance.
+- `catalog.js` — the list of buildings (prices, sizes, rents, effects).
+  Part of the configuration; `config.js` imports it.
 - `src/sim/` — simulation logic (the game loop, later: tenants,
   elevators, economy). No drawing code lives here.
 - `src/render/` — canvas drawing code. No game logic lives here.
@@ -75,6 +77,20 @@ milestone, once you've confirmed it works — never before.
   traits).
 
 ## Milestone log
+
+- **M6 — Full catalog and districts**: 29 building types (see
+  `catalog.js`, which `config.js` imports): offices, studios and
+  penthouses, hotel rooms and a ballroom, restaurants, shops, food courts,
+  cinemas, a clinic, security, maintenance, recycling, power, parking, a
+  gym, escalators, a staff-only service elevator, and the atrium. You can
+  now build **basements** (floors -1 and -2). Services have real effects:
+  coverage makes homes more attractive, maintenance cleans trash,
+  recycling cuts it, substations feed the power grid (a shortage slows the
+  elevators), garages hold workers' cars, and stressed tenants walk to the
+  clinic. Noise and trash stress tenants at home. **Districts** tab: theme a
+  band of floors (Business, Leisure, Residential, Wellness) for synergy
+  bonuses. Four more overlays: Security, Medical, Maintenance, Noise.
+  Save format is now version 3.
 
 - **M5 — Diagnostics**: the **Layer** button cycles heat-map overlays
   (Stress, Wait, Occupancy, Income). Every tile shows its number, and a

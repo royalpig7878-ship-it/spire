@@ -65,7 +65,7 @@ export function computeReach(tower, config) {
 
   for (const f of tower.facilities.values()) {
     const kind = config.facilities[f.type].transport;
-    if (kind === 'stairs') {
+    if (kind === 'stairs' || kind === 'escalator') {
       for (let fl = f.floor; fl < f.floor + f.height; fl++) union(run(fl - 1, f.cell), run(fl, f.cell));
     } else if (kind === 'elevator') {
       const stops = stopsOf.get(f.id);

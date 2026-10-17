@@ -7,6 +7,8 @@
 
 import { isConnected } from './tower.js';
 import { MINUTES_PER_DAY } from './clock.js';
+import { districtBonus } from './districts.js';
+import { coverageOf, noiseOf } from './services.js';
 
 export function tenantsOf(game, facility) {
   return Array.from(game.tenants.byFacility.get(facility.id) ?? []);
@@ -32,7 +34,8 @@ export function incomePerQuarter(game, config, facility) {
   if (def.rentPerCell <= 0 && !def.visitRevenue) return null;
   const occ = occupancy(game, config, facility) ?? 1;
   const connected = isConnected(game.tower, config, facility);
-  let rent = connected ? facility.width * def.rentPerCell * occ : 0;
+  const bonus = districtBonus(game.tower, config, facility);
+  let rent = connected ? facility.width * def.rentPerCell * occ * bonus.rentMult : 0;
   const dpq = config.time.daysPerQuarter;
   const quarterStart = Math.floor(game.clock.minutes / (dpq * MINUTES_PER_DAY)) * dpq * MINUTES_PER_DAY;
   const daysIn = Math.max(0.5, (game.clock.minutes - quarterStart) / MINUTES_PER_DAY);
@@ -83,6 +86,19 @@ export function overlayValue(game, config, mode, facility, floor, context) {
       const v = incomePerQuarter(game, config, facility);
       if (v === null) return null;
       return { value: v, text: v >= 1000 ? `$${(v / 1000).toFixed(1)}k` : `$${Math.round(v)}`, t: Math.min(1, v / context.incomeMax) };
+    }
+    case 'security':
+    case 'medical':
+    case 'maintenance': {
+      const def = config.facilities[facility.type];
+      if (def.transport || def.hall) return null;
+      const n = coverageOf(game, config, facility)[mode];
+      return { value: n, text: n ? `${n}` : '0', t: Math.min(1, n / 2) };
+    }
+    case 'noise': {
+      if (config.facilities[facility.type].transport) return null;
+      const n = noiseOf(game, config, facility);
+      return { value: n, text: n >= 0.5 ? `${n.toFixed(1)}` : '0', t: Math.min(1, n / 8) };
     }
     case 'wait': {
       if (config.facilities[facility.type].transport !== 'elevator') return null;
