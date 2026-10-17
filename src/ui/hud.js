@@ -23,11 +23,11 @@ export function createHud(root, config, callbacks) {
       <button class="pill icon-btn" id="hud-menu" type="button" aria-label="Menu">${MENU_ICON}</button>
     </div>
     <div class="hud hud2">
-      <div class="pill" id="hud-clock"></div>
+      <div class="pill clock" id="hud-clock"><span id="hud-time"></span><small id="hud-weather"></small></div>
       <div class="speeds" id="hud-speeds"></div>
     </div>
     <div class="hud hud3">
-      <div class="pill small" id="hud-height"></div>
+      <button class="pill small tier-btn" id="hud-height" type="button" aria-label="Rating and progress"></button>
       <div class="pill small" id="hud-mood"></div>
       <button class="pill small overlay-btn" id="hud-overlay" type="button">${LAYERS_ICON}<span id="hud-overlay-label">Layer: Off</span></button>
     </div>
@@ -61,7 +61,9 @@ export function createHud(root, config, callbacks) {
   const popEl = root.querySelector('#hud-pop');
   const moodEl = root.querySelector('#hud-mood');
   const heightEl = root.querySelector('#hud-height');
-  const clockEl = root.querySelector('#hud-clock');
+  const timeEl = root.querySelector('#hud-time');
+  const weatherEl = root.querySelector('#hud-weather');
+  heightEl.addEventListener('click', callbacks.onProgress);
   const speedsEl = root.querySelector('#hud-speeds');
   const debtEl = root.querySelector('#hud-debt');
   root.querySelector('#hud-menu').addEventListener('click', callbacks.onMenu);
@@ -87,14 +89,18 @@ export function createHud(root, config, callbacks) {
     update(state) {
       setText(fundsEl, formatMoney(state.funds));
       fundsEl.classList.toggle('debt', state.funds < 0);
-      setText(popEl, `Pop ${state.population}`);
-      setText(heightEl, `Floors ${state.topFloor} / ${config.plot.maxFloor}`);
+      setText(popEl, `Pop ${state.population.toLocaleString('en-US')}`);
+      // The stars are the rating; tapping them opens the progress screen.
+      setText(heightEl, `${'★'.repeat(state.stars)} ${state.topFloor}/${state.maxFloor}`);
       // Low mood gets a "!" badge as well as red text (never color alone).
       setText(moodEl, `Mood ${state.mood}%`);
       moodEl.classList.toggle('low', state.mood < 50);
 
-      // Brownout warning: demand has outgrown the power supply
-      if (state.power.ratio < 1) {
+      // Power warnings: a short-lived dip, or demand that has outgrown the supply
+      if (state.outage) {
+        setText(powerEl, `Power dip: elevators at ${Math.round(state.outage.factor * 100)}% speed until it passes.`);
+        powerEl.classList.add('show');
+      } else if (state.power.ratio < 1) {
         setText(powerEl, `Power shortage: elevators at ${Math.round(Math.max(config.power.minSpeedFactor, state.power.ratio) * 100)}% speed. Build a substation.`);
         powerEl.classList.add('show');
       } else {
@@ -116,7 +122,8 @@ export function createHud(root, config, callbacks) {
           legendEl.classList.remove('show');
         }
       }
-      setText(clockEl, `${state.dateText}  ${state.timeText}`);
+      setText(timeEl, `${state.dateText}  ${state.timeText}`);
+      setText(weatherEl, state.weatherText);
       for (const [speed, b] of speedButtons) {
         const active = speed === state.speed;
         b.classList.toggle('active', active);

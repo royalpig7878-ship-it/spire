@@ -19,6 +19,23 @@ import { hallAt, effectiveStops, isEligibleStop } from './shafts.js';
 
 const cellKey = (floor, cell) => `${floor},${cell}`;
 
+// The plot (how wide and tall you may build) grows with the rating tier.
+export function plotForTier(config, tier) {
+  return { ...config.plot, ...config.tiers[tier].plot };
+}
+
+// The lowest tier (1-based) at which a facility type becomes available.
+export function unlockTier(config, typeId) {
+  const index = config.tiers.findIndex((t) => t.unlocks.includes(typeId));
+  return index < 0 ? 1 : index + 1;
+}
+
+export function setTier(tower, config, tier) {
+  tower.tier = tier;
+  tower.plot = plotForTier(config, tier);
+  tower.version++;
+}
+
 export function createTower(config) {
   const tower = {
     funds: config.economy.startFunds,
@@ -26,6 +43,9 @@ export function createTower(config) {
     cells: new Map(),
     overlay: new Map(),
     districts: {}, // band number -> theme id (see src/sim/districts.js)
+    tier: 0, // rating tier, 0 = Foothold (see config.tiers)
+    plot: plotForTier(config, 0),
+    people: 0, // population, kept up to date by the tenant system (the Crown needs it)
     nextId: 1,
     version: 0, // bumps on every change; lets cached results know when to refresh
   };
@@ -77,6 +97,8 @@ function addFacility(tower, config, type, floor, cell, extra = {}) {
   };
   if (extra.cars !== undefined) facility.cars = extra.cars; // elevator cars
   if (extra.skip !== undefined) facility.skip = extra.skip; // floors switched off in shaft settings
+  if (extra.sprinklers) facility.sprinklers = true; // fire sprinklers installed
+  if (extra.closedUntil) facility.closedUntil = extra.closedUntil; // closed for repairs until this game minute
   tower.facilities.set(facility.id, facility);
   tower.nextId = Math.max(tower.nextId, facility.id + 1);
   indexFacility(tower, config, facility);
@@ -99,6 +121,7 @@ export function serializeTower(tower) {
     funds: tower.funds,
     nextId: tower.nextId,
     districts: { ...tower.districts },
+    tier: tower.tier,
     facilities: Array.from(tower.facilities.values())
       .sort((a, b) => a.id - b.id)
       .map((f) => ({ ...f })),
@@ -114,6 +137,9 @@ export function restoreTower(config, data) {
     cells: new Map(),
     overlay: new Map(),
     districts: { ...(data.districts ?? {}) },
+    tier: data.tier ?? 0,
+    plot: plotForTier(config, data.tier ?? 0),
+    people: 0,
     nextId: data.nextId,
     version: 0,
   };
@@ -147,10 +173,17 @@ export function isConnected(tower, config, facility) {
   return isFacilityConnected(getReach(tower, config), facility);
 }
 
+// Build price: per floor for tall types you drag out, a flat price for
+// fixed-height landmarks (the Crown).
+export function priceFor(config, typeId, height) {
+  const def = config.facilities[typeId];
+  return def.cost * (def.fixedHeight ? 1 : height);
+}
+
 // What a facility is worth: its build price, plus any extra elevator cars.
 export function buildCost(config, facility) {
   const extraCars = config.facilities[facility.type].transport === 'elevator' ? shaftCars(config, facility) - 1 : 0;
-  return config.facilities[facility.type].cost * facility.height + Math.max(0, extraCars) * config.elevators.carCost;
+  return priceFor(config, facility.type, facility.height) + Math.max(0, extraCars) * config.elevators.carCost;
 }
 
 export function shaftCars(config, facility) {
@@ -231,18 +264,32 @@ export function canPlace(tower, config, typeId, floor, cell, height = 1) {
   const def = config.facilities[typeId];
   const width = def.width;
   const top = floor + height - 1;
-  const maxFloor = def.maxFloor ?? config.plot.maxFloor;
+  const maxFloor = def.maxFloor ?? tower.plot.maxFloor;
   const isTransport = Boolean(def.transport);
 
-  if (height > 1 && !def.vertical) return { ok: false, reason: 'Only one floor tall' };
+  // Locked until your rating is high enough.
+  const needTier = unlockTier(config, typeId);
+  if (needTier > tower.tier + 1) {
+    return { ok: false, reason: `Unlocks at ${config.tiers[needTier - 1].name}` };
+  }
+  if (def.landmark) {
+    if (Array.from(tower.facilities.values()).some((f) => f.type === typeId)) {
+      return { ok: false, reason: 'You already built it' };
+    }
+    if (tower.people < config.crown.requiresPeople) {
+      return { ok: false, reason: `Needs ${config.crown.requiresPeople.toLocaleString('en-US')} people` };
+    }
+  }
+  if (def.fixedHeight && height !== def.fixedHeight) return { ok: false, reason: 'Wrong height' };
+  if (height > 1 && !def.vertical && !def.fixedHeight) return { ok: false, reason: 'Only one floor tall' };
   if (def.minHeight && height < def.minHeight) {
     return { ok: false, reason: `Needs at least ${def.minHeight} floors` };
   }
   if (floor < def.minFloor || top > maxFloor) {
     return { ok: false, reason: 'Cannot be built on this floor' };
   }
-  if (floor < config.plot.minFloor) return { ok: false, reason: 'Too deep for your plot' };
-  const half = config.plot.halfWidthCells;
+  if (floor < tower.plot.minFloor) return { ok: false, reason: 'Too deep for your plot' };
+  const half = tower.plot.halfWidthCells;
   if (cell < -half || cell + width > half) {
     return { ok: false, reason: 'Outside your plot' };
   }
@@ -276,7 +323,7 @@ export function canPlace(tower, config, typeId, floor, cell, height = 1) {
   // A service shaft is for staff: it only has to start inside a hall.
   if (def.serviceOnly) {
     if (!startsInHall) return { ok: false, reason: 'Must start in the lobby or a sky lobby' };
-    if (tower.funds < def.cost * height) return { ok: false, reason: 'Not enough funds' };
+    if (tower.funds < priceFor(config, typeId, height)) return { ok: false, reason: 'Not enough funds' };
     return { ok: true, reason: '' };
   }
 
@@ -294,15 +341,16 @@ export function canPlace(tower, config, typeId, floor, cell, height = 1) {
     };
   }
 
-  if (tower.funds < def.cost * height) return { ok: false, reason: 'Not enough funds' };
+  if (tower.funds < priceFor(config, typeId, height)) return { ok: false, reason: 'Not enough funds' };
   return { ok: true, reason: '' };
 }
 
 export function place(tower, config, typeId, floor, cell, nowMinute = 0, height = 1) {
   const check = canPlace(tower, config, typeId, floor, cell, height);
   if (!check.ok) return check;
-  tower.funds -= config.facilities[typeId].cost * height;
-  addFacility(tower, config, typeId, floor, cell, { builtMinute: nowMinute, height });
+  tower.funds -= priceFor(config, typeId, height);
+  const landmark = Boolean(config.facilities[typeId].landmark);
+  addFacility(tower, config, typeId, floor, cell, { builtMinute: nowMinute, height, locked: landmark });
   return check;
 }
 
@@ -312,7 +360,9 @@ export function place(tower, config, typeId, floor, cell, nowMinute = 0, height 
 // that need its stairs/elevator, or cut the lobby in two. We test by
 // removing it, checking, and putting it back.
 export function canDemolish(tower, config, facility) {
-  if (facility.locked) return { ok: false, reason: 'The main lobby stays' };
+  if (facility.locked) {
+    return { ok: false, reason: facility.type === 'lobby' ? 'The main lobby stays' : 'A landmark stays for good' };
+  }
 
   const reachBefore = getReach(tower, config);
   const connectedBefore = new Set();

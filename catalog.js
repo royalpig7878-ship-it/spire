@@ -507,6 +507,23 @@ export const FACILITIES = {
     color: '#8fbfb5',
     accent: '#e9f4ef',
   },
+  // THE CROWN: the landmark that wins the game. One only, three floors tall,
+  // unlocked at the Legendary rating (see `crown` in config.js).
+  crown: {
+    name: 'The Crown',
+    category: 'special',
+    width: 8,
+    cost: 250000,
+    minFloor: 30,
+    fixedHeight: 3,
+    landmark: true,
+    rentPerCell: 0,
+    upkeepPerCell: 12,
+    color: '#e8b923',
+    accent: '#fff3b0',
+    style: 'crown',
+    tags: [],
+  },
   // A tall open garden space: tenants on nearby floors feel calmer.
   atrium: {
     name: 'Atrium',

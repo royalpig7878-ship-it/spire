@@ -4,7 +4,18 @@
 // the placement ghost. It only READS the tower and ui state — it never
 // changes them. (Simulation stays in src/sim.)
 
-import { drawFacility, drawNoAccessBadge, drawTrashBadge, roundedRectPath } from './facilities.js';
+import {
+  drawFacility,
+  drawNoAccessBadge,
+  drawTrashBadge,
+  drawFlames,
+  drawPests,
+  drawClosed,
+  drawSprinklers,
+  roundedRectPath,
+} from './facilities.js';
+import { drawWeather } from './weather.js';
+import { calendar } from '../sim/clock.js';
 import { bandRange } from '../sim/districts.js';
 import { trashLevel } from '../sim/services.js';
 import { drawElevators } from './elevators.js';
@@ -20,6 +31,7 @@ import { formatMoney } from '../data/format.js';
 export function renderWorld(ctx, W, H, camera, config, game, ui, alpha) {
   const { tower, elevators, tenants } = game;
   const hour = hourOfDay(game.clock);
+  const seconds = performance.now() / 1000; // for flames, rain and other little animations
   const world = config.world;
   const { cellWidth, floorHeight } = config.grid;
   const zoom = camera.zoom;
@@ -42,29 +54,32 @@ export function renderWorld(ctx, W, H, camera, config, game, ui, alpha) {
   if (groundY < H) {
     ctx.fillStyle = mixToHex(world.groundColor, config.sky.nightTint, nightDim);
     ctx.fillRect(0, groundY, W, H - groundY);
-    ctx.fillStyle = mixToHex(world.grassColor, config.sky.nightTint, nightDim);
+    // The grass follows the season (and goes white under snow).
+    const seasonIndex = calendar(game.clock, config).quarter - 1;
+    const grass = game.weather.kind === 'snow' ? world.seasonGrass[3] : world.seasonGrass[seasonIndex] ?? world.grassColor;
+    ctx.fillStyle = mixToHex(grass, config.sky.nightTint, nightDim);
     ctx.fillRect(0, groundY, W, world.grassHeight * zoom);
   }
 
   // --- Plot outline (dashed) so you can see where you may build ---
-  const half = config.plot.halfWidthCells;
+  const half = tower.plot.halfWidthCells;
   const plotLeft = slotX(-half);
   const plotRight = slotX(half);
-  const plotTop = slotY(config.plot.maxFloor);
+  const plotTop = slotY(tower.plot.maxFloor);
   ctx.save();
   ctx.strokeStyle = world.plotOutlineColor;
   ctx.lineWidth = 2;
   ctx.setLineDash([10, 8]);
   // The plot reaches down through the basement floors too.
-  const plotBottom = slotY(config.plot.minFloor) + floorPx;
+  const plotBottom = slotY(tower.plot.minFloor) + floorPx;
   ctx.strokeRect(plotLeft, plotTop, plotRight - plotLeft, plotBottom - plotTop);
   ctx.restore();
 
   // --- Sky districts: a tinted, labelled band of floors ---
   const bandRect = (band) => {
     const { first, last } = bandRange(config, band);
-    const topFloor = Math.min(last, config.plot.maxFloor);
-    if (first > config.plot.maxFloor) return null;
+    const topFloor = Math.min(last, tower.plot.maxFloor);
+    if (first > tower.plot.maxFloor) return null;
     return { x: plotLeft, y: slotY(topFloor), w: plotRight - plotLeft, h: slotY(first - 1) - slotY(topFloor) };
   };
   const drawBand = (band, color, label, alpha, dashed = false) => {
@@ -121,7 +136,7 @@ export function renderWorld(ctx, W, H, camera, config, game, ui, alpha) {
       ctx.moveTo(x, Math.max(0, plotTop));
       ctx.lineTo(x, Math.min(H, plotBottom));
     }
-    for (let f = config.plot.minFloor; f <= config.plot.maxFloor + 1; f++) {
+    for (let f = tower.plot.minFloor; f <= tower.plot.maxFloor + 1; f++) {
       const y = Math.round(toScreenY(-f * floorHeight)) + 0.5;
       if (y < 0 || y > H) continue;
       ctx.moveTo(Math.max(0, plotLeft), y);
@@ -144,6 +159,7 @@ export function renderWorld(ctx, W, H, camera, config, game, ui, alpha) {
     let lit = 0;
     if (!def.transport && connected) {
       lit = def.capacity ? ((tenants.present.get(f.id) ?? 0) > 0 ? 1 : 0) : 1;
+      if (game.incidents.outage || (f.closedUntil && f.closedUntil > game.clock.minutes)) lit = 0; // lights out
     }
     const shaft = def.transport === 'elevator' ? elevators.shafts.get(f.id) : null;
     const look = {
@@ -154,6 +170,7 @@ export function renderWorld(ctx, W, H, camera, config, game, ui, alpha) {
       tileIndex: 0,
       isStop: true,
       express: def.stopMode === 'hubs',
+      tileTotal: f.height,
     };
     for (let i = 0; i < f.height; i++) {
       const y = slotY(f.floor + i);
@@ -161,6 +178,16 @@ export function renderWorld(ctx, W, H, camera, config, game, ui, alpha) {
       look.tileIndex = i;
       look.isStop = shaft ? shaft.stops.has(f.floor + i) : true; // shafts have a door only at stops
       drawFacility(ctx, f.type, def, x, y, w, floorPx, cellPx, detailed, look);
+    }
+    // Trouble on the tile: fire, pests, repairs, and (good news) sprinklers.
+    if (detailed) {
+      const ty = slotY(f.floor + f.height - 1);
+      const th = floorPx * f.height;
+      if (f.sprinklers) drawSprinklers(ctx, x, ty, w, th);
+      if (f.closedUntil && f.closedUntil > game.clock.minutes) drawClosed(ctx, x, ty, w, th);
+      if (game.incidents.pests[f.id]) drawPests(ctx, x, ty, w, th, seconds);
+      const fire = game.incidents.fires[f.id];
+      if (fire) drawFlames(ctx, x, ty, w, th, fire.intensity, seconds);
     }
     if (!connected && !def.transport && detailed) {
       drawNoAccessBadge(ctx, x, slotY(f.floor), w, floorPx);
@@ -180,6 +207,15 @@ export function renderWorld(ctx, W, H, camera, config, game, ui, alpha) {
   // --- Elevator cars, call buttons and waiting riders ---
   drawElevators(ctx, W, H, camera, config, elevators, alpha);
 
+  // --- A power dip darkens the whole tower ---
+  if (game.incidents.outage) {
+    ctx.fillStyle = 'rgba(6,10,26,0.38)';
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  // --- Weather over everything ---
+  drawWeather(ctx, W, H, game.weather.kind, seconds);
+
   // --- Ghost (build preview; may be several floors tall) ---
   if (ui.ghost) {
     const g = ui.ghost;
@@ -189,13 +225,13 @@ export function renderWorld(ctx, W, H, camera, config, game, ui, alpha) {
     const topY = slotY(g.floor + g.height - 1);
     ctx.save();
     ctx.globalAlpha = 0.7;
-    const ghostLook = { isMain: false, dark: skyState.dark, lit: 0, sky: config.sky, tileIndex: 0 };
+    const ghostLook = { isMain: false, dark: skyState.dark, lit: 0, sky: config.sky, tileIndex: 0, tileTotal: g.height };
     for (let i = 0; i < g.height; i++) {
       ghostLook.tileIndex = i;
       drawFacility(ctx, g.typeId, def, x, slotY(g.floor + i), w, floorPx, cellPx, detailed, ghostLook);
     }
     ctx.restore();
-    const label = g.ok ? formatMoney(def.cost * g.height) : g.reason;
+    const label = g.ok ? formatMoney(def.fixedHeight ? def.cost : def.cost * g.height) : g.reason;
     drawVerdict(ctx, world, x, topY, w, floorPx * g.height, g.ok, label);
   }
 

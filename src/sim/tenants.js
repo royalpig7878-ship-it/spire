@@ -24,6 +24,8 @@ import { requestRide, cancelRider } from './elevators.js';
 import { isConnected } from './tower.js';
 import { districtBonus } from './districts.js';
 import { coverageOf, noiseOf, trashLevel, amenityRelief, appealOf } from './services.js';
+import { isBurning, isClosed, fireFloors, hasCrisis } from './incidents.js';
+import { weatherFx } from './weather.js';
 
 const DAY = 1440; // minutes per day
 const rnd = (a, b) => a + Math.random() * (b - a);
@@ -38,12 +40,14 @@ export function createTenantSystem(config, clockMinutes) {
     byFacility: new Map(), // facility id -> Set of tenants who live/work there
     present: new Map(), // facility id -> how many are inside it right now
     visitors: new Map(), // cafe id -> customers currently dwelling
+    fire: new Set(), // floors on fire right now (refreshed every tick)
     counts: new Map(), // floor -> people standing/waiting on it (for crowd stress)
     effectCache: new Map(), // per-tick cache of what each unit does to its people
     fx: [], // little floating messages ("Moved out!")
     lastHour: Math.floor(clockMinutes / 60),
     moodTimer: 0,
-    stats: { population: 0, mood: 100, moveOuts: 0, reputation: config.tenants.reputation.start },
+    // population = people (tenants x people each one stands for at this rating)
+    stats: { population: 0, tenantCount: 0, mood: 100, moveOuts: 0, reputation: config.tenants.reputation.start },
   };
 }
 
@@ -99,24 +103,32 @@ function newTenant(sys, config, facility, extra = {}) {
   const kind = def.tenantKind;
   const trait = extra.trait ?? pickTrait(config);
   const made = extra.sched ? { sched: extra.sched, visits: fixVisits(extra.visits) } : makeSchedule(kind, trait, config);
-  const t = {
-    id: sys.nextId++,
+  const t = blankTenant(sys, {
     kind,
     homeId: facility.id,
     slot: extra.slot ?? slot,
     trait,
     sched: made.sched,
     visits: made.visits,
-    visitDone: {}, // visit key -> day index it was last done
     stress: extra.stress ?? 0,
+  });
+  sys.list.push(t);
+  registerHome(sys, t);
+  return t;
+}
+
+function blankTenant(sys, props) {
+  return {
+    id: sys.nextId++,
+    visitDone: {}, // visit key -> day index it was last done
     maxedSec: 0,
-    mode: 'away', // away | home | travel | dwell
+    mode: 'away', // away | home | travel | dwell (| done, for inspectors)
     enterAfter: 0, // do not appear before this game minute
     pos: null, // { floor, x } while inside the tower
     route: null,
     legIdx: 0,
     legT: 0,
-    task: null, // enter | leave | visit | return
+    task: null, // enter | leave | visit | return | tour
     rider: null, // current elevator ride
     dest: null,
     cafeId: null, // the venue they are visiting (any shop, cinema, clinic...)
@@ -127,10 +139,96 @@ function newTenant(sys, config, facility, extra = {}) {
     fails: 0,
     rideRetry: 0,
     dead: false,
+    ...props,
+  };
+}
+
+// ---------- Inspectors and VIPs ----------
+
+// Sends an inspector (or VIP) on a tour of a few buildings, ending at the top.
+// Returns false if there is nothing worth showing yet.
+export function spawnInspector(game, config, purpose) {
+  const sys = game.tenants;
+  const lobby = Array.from(game.tower.facilities.values()).find((f) => f.type === 'lobby' && f.locked);
+  const candidates = Array.from(game.tower.facilities.values()).filter((f) => {
+    const def = config.facilities[f.type];
+    return (def.capacity || def.purposes) && isConnected(game.tower, config, f) && !isClosed(game, f);
+  });
+  if (!lobby || !candidates.length) return false;
+  const top = candidates.reduce((a, b) => (b.floor > a.floor ? b : a));
+  const pool = candidates.filter((f) => f !== top).sort(() => Math.random() - 0.5);
+  const chosen = [top];
+  while (chosen.length < config.inspector.tourStops && pool.length) chosen.push(pool.pop());
+  chosen.sort((a, b) => a.floor - b.floor);
+
+  const t = blankTenant(sys, {
+    kind: 'inspector',
+    homeId: lobby.id,
+    slot: 0,
+    trait: config.inspector.trait,
+    sched: {},
+    visits: [],
+    stress: 0,
+  });
+  t.inspector = {
+    purpose,
+    stops: chosen.map((f) => ({ facilityId: f.id, floor: f.floor, x: f.cell + f.width / 2 })),
+    stopIdx: -1,
+    peakStress: 0,
+    worstWait: 0,
+    dirty: 0,
+    incidents: 0,
+    stormedOut: false,
   };
   sys.list.push(t);
-  registerHome(sys, t);
-  return t;
+  return true;
+}
+
+function endInspection(game, t, stormedOut) {
+  const insp = game.progress.inspection;
+  if (insp && !insp.result) {
+    t.inspector.stormedOut = stormedOut;
+    insp.result = { ...t.inspector };
+  }
+  if (t.rider) cancelRider(game, t.rider);
+  t.rider = null;
+  t.dead = true;
+}
+
+function updateInspector(game, config, t, dt, minute) {
+  const insp = t.inspector;
+  insp.peakStress = Math.max(insp.peakStress, t.stress);
+  insp.incidents = Math.max(insp.incidents, hasCrisis(game));
+  if (t.stress >= 99) {
+    t.maxedSec += dt;
+    if (t.maxedSec > 3) return endInspection(game, t, true);
+  }
+  const stopSpot = (stop) => ({ floor: stop.floor, x: stop.x });
+
+  switch (t.mode) {
+    case 'away': // just arrived at the street: head for the first stop
+      insp.stopIdx = 0;
+      if (!startTrip(game, config, t, 'tour', doorSpot(config), stopSpot(insp.stops[0]))) endInspection(game, t, true);
+      break;
+    case 'travel':
+      stepTravel(game, config, t, dt);
+      break;
+    case 'dwell':
+      if (minute >= t.dwellUntil) {
+        insp.stopIdx += 1;
+        const next = insp.stops[insp.stopIdx];
+        const ok = next
+          ? startTrip(game, config, t, 'tour', t.pos, stopSpot(next))
+          : startTrip(game, config, t, 'leave', t.pos, doorSpot(config));
+        if (!ok) endInspection(game, t, true);
+      }
+      break;
+    case 'done':
+      endInspection(game, t, false);
+      break;
+    default:
+  }
+  return undefined;
 }
 
 // ---------- Small helpers ----------
@@ -142,6 +240,7 @@ function addStress(config, t, amount) {
 }
 
 function homeSpot(game, config, t) {
+  if (t.kind === 'inspector') return doorSpot(config);
   const f = game.tower.facilities.get(t.homeId);
   const def = config.facilities[f.type];
   return { floor: f.floor, x: f.cell + ((t.slot + 0.5) * f.width) / def.capacity };
@@ -166,6 +265,10 @@ function fx(sys, floor, x, text) {
 function removeTenant(game, config, t, reason) {
   const sys = game.tenants;
   if (t.dead) return;
+  if (t.kind === 'inspector') {
+    endInspection(game, t, true); // something went wrong with the tour: count it as a failed visit
+    return;
+  }
   t.dead = true;
   if (t.rider) cancelRider(game, t.rider);
   t.rider = null;
@@ -230,6 +333,7 @@ function findVenue(game, config, t, purpose) {
   for (const f of game.tower.facilities.values()) {
     const def = config.facilities[f.type];
     if (!def.purposes?.includes(purpose) || !isConnected(game.tower, config, f)) continue;
+    if (isClosed(game, f) || isBurning(game, f)) continue;
     const here = sys.visitors.get(f.id) ?? 0;
     if (here >= def.visitCapacity) continue;
     const score = Math.abs(f.floor - Math.round(t.pos.floor)) + here * 0.3;
@@ -266,7 +370,7 @@ function homeEffects(game, config, t) {
     fx = {
       relief: amenityRelief(game, config, f.floor) + district.relief + (cov.medical ? 0.12 : 0) + (cov.security ? 0.08 : 0),
       noise,
-      trash: trashShare * sv.trash.stressPerSec,
+      trash: trashShare * sv.trash.stressPerSec + (game.incidents.pests[f.id] ? config.incidents.pests.stressPerSec : 0),
     };
     sys.effectCache.set(t.homeId, fx);
   }
@@ -278,15 +382,31 @@ function finishTrip(game, config, t) {
   const sys = game.tenants;
   const minute = game.clock.minutes;
   switch (t.task) {
-    case 'enter':
+    case 'enter': {
+      t.mode = 'home';
+      t.pos = homeSpot(game, config, t);
+      // Rain: they arrive damp and a bit stressed.
+      const arrivalStress = weatherFx(game, config).arrivalStress;
+      if (arrivalStress) addStress(config, t, arrivalStress);
+      break;
+    }
     case 'return':
       t.mode = 'home';
       t.pos = homeSpot(game, config, t);
       break;
     case 'leave':
-      t.mode = 'away';
+      t.mode = t.kind === 'inspector' ? 'done' : 'away';
       t.pos = null;
       break;
+    case 'tour': {
+      // The inspector reached a stop: look around for a while.
+      const stop = t.inspector.stops[t.inspector.stopIdx];
+      const f = game.tower.facilities.get(stop.facilityId);
+      if (f && trashLevel(game, f) >= config.services.trash.badgeAbove) t.inspector.dirty += 1;
+      t.dwellUntil = minute + rnd(config.inspector.dwellMin[0], config.inspector.dwellMin[1]);
+      t.mode = 'dwell';
+      break;
+    }
     case 'visit': {
       const cafe = game.tower.facilities.get(t.cafeId);
       const def = cafe && config.facilities[cafe.type];
@@ -296,7 +416,9 @@ function finishTrip(game, config, t) {
         break;
       }
       // The customer pays (more in a matching district), and a visit calms them down.
-      const revenue = Math.round(def.visitRevenue * districtBonus(game.tower, config, cafe).salesMult);
+      const revenue = Math.round(
+        def.visitRevenue * districtBonus(game.tower, config, cafe).salesMult * (weatherFx(game, config).salesMult ?? 1),
+      );
       game.tower.funds += revenue;
       game.economy.salesThisQuarter += revenue;
       game.economy.salesByFacility[cafe.id] = (game.economy.salesByFacility[cafe.id] ?? 0) + revenue;
@@ -330,7 +452,7 @@ function stepTravel(game, config, t, dt) {
 
   if (leg.type === 'walk') {
     const dx = leg.to - t.pos.x;
-    const step = config.tenants.walkSpeedCellsPerSec * dt;
+    const step = config.tenants.walkSpeedCellsPerSec * (weatherFx(game, config).walkSpeedMult ?? 1) * dt;
     t.pos.floor = leg.floor;
     const moved = Math.min(Math.abs(dx), step);
     t.pos.x += Math.sign(dx) * moved;
@@ -359,11 +481,13 @@ function stepTravel(game, config, t, dt) {
     }
     t.pos.floor = leg.fromFloor;
     t.pos.x = leg.x;
-    // The shaft's settings changed since this trip was planned: plan again.
+    // The shaft's settings changed (or a fire closed a floor) since this trip
+    // was planned: plan again.
     const planned = game.elevators.shafts.get(leg.shaftId);
     if (!t.rider && planned && (!planned.stops.has(leg.fromFloor) || !planned.stops.has(leg.toFloor))) {
       return replan(game, config, t);
     }
+    if (!t.rider && (sys.fire.has(leg.fromFloor) || sys.fire.has(leg.toFloor))) return replan(game, config, t);
     if (!t.rider) {
       t.rideRetry -= dt;
       if (t.rideRetry <= 0) {
@@ -375,6 +499,7 @@ function stepTravel(game, config, t, dt) {
     } else if (t.rider.state === 'waiting') {
       const lineLength = (game.elevators.shafts.get(t.rider.shaftId)?.waiting.get(leg.fromFloor) ?? []).length;
       addStress(config, t, sc.waitPerSec * (1 + sc.queueCrowdBonus * lineLength) * dt);
+      if (t.inspector) t.inspector.worstWait = Math.max(t.inspector.worstWait, t.rider.waited);
     } else if (t.rider.state === 'riding') {
       standing = false;
       const shaft = game.elevators.shafts.get(t.rider.shaftId);
@@ -394,6 +519,8 @@ function stepTravel(game, config, t, dt) {
 
   // Passing through an atrium's calming range helps a little.
   t.stress = Math.max(0, t.stress - amenityRelief(game, config, floorKey) * dt);
+  // Smoke: being on a burning floor is very stressful.
+  if (sys.fire.has(floorKey)) addStress(config, t, config.incidents.fire.smokeStressPerSec * dt);
 
   if (standing) {
     const next = sys.nextCounts;
@@ -414,18 +541,38 @@ function updateTenant(game, config, t, dt, minute) {
   const mod = minute % DAY;
   const day = Math.floor(minute / DAY);
 
+  if (t.kind === 'inspector') {
+    updateInspector(game, config, t, dt, minute);
+    return;
+  }
+  const home = game.tower.facilities.get(t.homeId);
+  const homeUnusable = isBurning(game, home) || isClosed(game, home); // on fire or closed for repairs
+
   switch (t.mode) {
     case 'away':
       t.stress = Math.max(0, t.stress - sc.decayAwayPerSec * dt);
       t.maxedSec = 0;
-      if (minute >= t.enterAfter && minute >= t.nextTry && shouldBeInside(t, mod)) {
+      if (minute >= t.enterAfter && minute >= t.nextTry && shouldBeInside(t, mod) && !homeUnusable) {
+        // Snow slows the street: arrivals trickle in late.
+        const delayMin = weatherFx(game, config).arrivalDelayMin;
+        if (delayMin && t.snowDay !== day) {
+          t.snowDay = day;
+          t.enterAfter = minute + rnd(5, delayMin);
+          break;
+        }
         startTrip(game, config, t, 'enter', doorSpot(config), homeSpot(game, config, t));
       }
       break;
 
     case 'home': {
+      if (homeUnusable) {
+        // Fire or closure: everybody evacuates to the street.
+        if (isBurning(game, home)) addStress(config, t, config.incidents.fire.smokeStressPerSec * dt);
+        startTrip(game, config, t, 'leave', homeSpot(game, config, t), doorSpot(config));
+        break;
+      }
       // At home: calm down (helped by atria, districts, medical cover), but
-      // noise and trash in the unit wear on people.
+      // noise, trash and pests in the unit wear on people.
       const fx = homeEffects(game, config, t);
       t.stress = Math.max(0, t.stress - (sc.decayInsidePerSec + fx.relief) * dt);
       if (fx.annoy > 0) addStress(config, t, fx.annoy * dt);
@@ -450,8 +597,10 @@ function updateTenant(game, config, t, dt, minute) {
       break;
     }
 
-    case 'dwell':
+    case 'dwell': {
       t.stress = Math.max(0, t.stress - sc.decayInsidePerSec * dt);
+      const venue = game.tower.facilities.get(t.cafeId);
+      if (venue && (isBurning(game, venue) || isClosed(game, venue))) t.dwellUntil = minute; // leave a burning venue
       if (minute >= t.dwellUntil) {
         sys.visitors.set(t.cafeId, Math.max(0, (sys.visitors.get(t.cafeId) ?? 1) - 1));
         t.cafeId = null;
@@ -462,6 +611,7 @@ function updateTenant(game, config, t, dt, minute) {
         }
       }
       break;
+    }
 
     case 'travel':
       stepTravel(game, config, t, dt);
@@ -480,6 +630,7 @@ function updateTenant(game, config, t, dt, minute) {
 
 export function occupancyOf(game, config, facility) {
   const def = config.facilities[facility.type];
+  if (isClosed(game, facility)) return 0; // closed for repairs: no rent
   if (!def.capacity) return 1; // shops etc. are "let" as soon as they are reachable
   return Math.min(1, (game.tenants.byFacility.get(facility.id)?.size ?? 0) / def.capacity);
 }
@@ -491,6 +642,8 @@ function moveInStep(game, config) {
   for (const f of game.tower.facilities.values()) {
     const def = config.facilities[f.type];
     if (!def.capacity || !isConnected(game.tower, config, f)) continue;
+    // Nobody moves into a burning, closed or pest-ridden building.
+    if (isClosed(game, f) || isBurning(game, f) || game.incidents.pests[f.id]) continue;
     let count = sys.byFacility.get(f.id)?.size ?? 0;
     while (count < def.capacity && sys.list.length < config.tenants.maxSimulated) {
       if (Math.random() >= mi.chancePerVacancyPerHour * demand * appealOf(game, config, f)) break;
@@ -517,6 +670,7 @@ export function updateTenants(game, config, dt) {
   sys.present = new Map();
   sys.nextCounts = new Map();
   sys.effectCache = new Map();
+  sys.fire = fireFloors(game); // floors currently on fire
   for (const t of sys.list) {
     if (t.dead) continue;
     if (!game.tower.facilities.has(t.homeId)) {
@@ -535,9 +689,18 @@ export function updateTenants(game, config, dt) {
   if (sys.moodTimer <= 0) {
     sys.moodTimer = 0.5;
     let total = 0;
-    for (const t of sys.list) total += t.stress;
-    sys.stats.population = sys.list.length;
-    sys.stats.mood = sys.list.length ? Math.round(100 - total / sys.list.length) : 100;
+    let count = 0;
+    for (const t of sys.list) {
+      if (t.kind === 'inspector') continue; // visitors are not residents
+      total += t.stress;
+      count += 1;
+    }
+    sys.stats.tenantCount = count;
+    // Population counts PEOPLE: each simulated tenant stands for more people
+    // as the tower's rating rises (see config.tiers).
+    sys.stats.population = count * config.tiers[game.tower.tier].peoplePerTenant;
+    game.tower.people = sys.stats.population;
+    sys.stats.mood = count ? Math.round(100 - total / count) : 100;
   }
 }
 
@@ -555,15 +718,17 @@ export function dailyTenantUpdate(game, config) {
 export function serializeTenants(sys) {
   return {
     stats: { moveOuts: sys.stats.moveOuts, reputation: sys.stats.reputation },
-    list: sys.list.map((t) => ({
-      kind: t.kind,
-      homeId: t.homeId,
-      slot: t.slot,
-      trait: t.trait,
-      sched: t.sched,
-      visits: t.visits,
-      stress: Math.round(t.stress),
-    })),
+    list: sys.list
+      .filter((t) => t.kind !== 'inspector')
+      .map((t) => ({
+        kind: t.kind,
+        homeId: t.homeId,
+        slot: t.slot,
+        trait: t.trait,
+        sched: t.sched,
+        visits: t.visits,
+        stress: Math.round(t.stress),
+      })),
   };
 }
 

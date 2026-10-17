@@ -107,6 +107,12 @@ export function createInfoPanel(root, config, handlers) {
       ${showEnv ? row('Cover', '', 'cover') : ''}
       ${showEnv ? row('Trash', '', 'trash') : ''}
       ${showEnv ? row('Noise from neighbours', '', 'noise') : ''}
+      <div class="note" data-bind="status"></div>
+      ${
+        !def.transport && !def.hall && !def.landmark
+          ? `<button class="choice" id="sprinkler-btn" type="button"><span>Fire sprinklers</span><span data-bind="sprinklerCost"></span></button>`
+          : ''
+      }
       <div class="note" data-bind="district"></div>
       <div class="note" data-bind="effects"></div>
       <div class="section-label" id="tenant-title"></div>
@@ -115,9 +121,28 @@ export function createInfoPanel(root, config, handlers) {
       const el = body.querySelector(`[data-bind="${key}"]`);
       if (el && el.innerHTML !== html) el.innerHTML = html;
     };
+    const sprinklerBtn = body.querySelector('#sprinkler-btn');
+    if (sprinklerBtn) {
+      sprinklerBtn.addEventListener('click', () => {
+        handlers.onSprinklers(f);
+        refresh(true);
+      });
+    }
     updaters.push(() => {
       const connected = isConnected(game.tower, config, f);
       set('access', connected ? 'Connected to the lobby' : '<b class="warn">No route from the lobby</b>');
+      // Trouble report: fire, repairs, pests
+      const bits = [];
+      const fire = game.incidents.fires[f.id];
+      if (fire) bits.push(`<b class="warn">ON FIRE (${Math.round(fire.intensity)}%). Sprinklers and maintenance hubs fight it.</b>`);
+      if (f.closedUntil && f.closedUntil > game.clock.minutes) bits.push('<b class="warn">Closed for repairs after a fire.</b>');
+      if (game.incidents.pests[f.id]) bits.push('<b class="warn">Pests! Clean up the trash.</b>');
+      set('status', bits.join('<br>'));
+      if (sprinklerBtn) {
+        const cost = f.width * f.height * config.incidents.fire.sprinklerCostPerCell;
+        set('sprinklerCost', f.sprinklers ? 'installed' : formatMoney(cost));
+        sprinklerBtn.disabled = Boolean(f.sprinklers) || game.tower.funds < cost;
+      }
       set('effects', serviceNotes(game, f, def).join('<br>'));
       set('district', districtBonus(game.tower, config, f).notes.join('<br>'));
       if (showEnv) {

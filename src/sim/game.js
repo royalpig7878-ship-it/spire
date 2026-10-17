@@ -14,6 +14,10 @@ import { createEconomy, dailyUpkeep, quarterlyRent, recordDailyOccupancy } from 
 import { createTenantSystem, updateTenants, dailyTenantUpdate, occupancyOf } from './tenants.js';
 import { createServices, dailyServicesUpdate, powerStatus } from './services.js';
 import { districtBonus } from './districts.js';
+import { createWeather, rollWeather, weatherFx } from './weather.js';
+import { createIncidents, updateIncidents, dailyIncidents } from './incidents.js';
+import { createProgress, tickProgress, dailyProgress } from './progress.js';
+import { spawnInspector } from './tenants.js';
 
 export function createGame(config) {
   const clock = createClock(config);
@@ -23,6 +27,10 @@ export function createGame(config) {
     economy: createEconomy(),
     tenants: createTenantSystem(config, clock.minutes), // the people (saved in simple form)
     services: createServices(), // trash levels and other building-service state
+    weather: createWeather(), // today's weather and season
+    incidents: createIncidents(), // fires, pests, a power dip, an extortion note...
+    progress: createProgress(), // rating tier, inspections, victory
+    alerts: [], // short notices for the UI (fires, inspector news...); the UI empties this
     elevators: createElevatorSystem(), // cars and riders (not saved; rebuilt on load)
     demoTraffic: false, // Tools tab toggle: random riders for watching dispatch
     speed: config.time.defaultSpeed,
@@ -38,8 +46,10 @@ export function updateGame(game, config, dtSeconds) {
   // Tenants and elevators move in "sim seconds" (real seconds x speed),
   // separate from the game clock, so people and cars stay watchable.
   // Tenants go first so their ride requests are seen by this tick's dispatch.
+  updateIncidents(game, config, dtSeconds * game.speed);
   updateTenants(game, config, dtSeconds * game.speed);
   updateElevators(game, config, dtSeconds * game.speed);
+  tickProgress(game, config, spawnInspector);
 
   let minutesLeft = (dtSeconds * game.speed * MINUTES_PER_DAY) / config.time.dayLengthSeconds;
   const clock = game.clock;
@@ -62,9 +72,16 @@ function onNewDay(game, config) {
   const { tower, economy, clock } = game;
 
   // 1. Pay today's upkeep, and note how full each rentable unit was today.
-  // The electricity bill is part of upkeep; recycling and parking earn a little.
+  // A new day: new weather, and maybe a random event or an inspector visit.
+  rollWeather(game, config);
+  dailyIncidents(game, config);
+  dailyProgress(game, config);
+
+  // The electricity bill is part of upkeep (a heat wave makes it dearer);
+  // recycling and parking earn a little.
   const power = powerStatus(game, config);
-  const upkeep = dailyUpkeep(tower, config) + Math.round(power.demand * config.power.pricePerUnitPerDay);
+  const powerPrice = config.power.pricePerUnitPerDay * (weatherFx(game, config).powerPriceMult ?? 1);
+  const upkeep = dailyUpkeep(tower, config) + Math.round(power.demand * powerPrice);
   tower.funds -= upkeep;
   economy.upkeepThisQuarter += upkeep;
   const serviceIncome = dailyServicesUpdate(game, config);

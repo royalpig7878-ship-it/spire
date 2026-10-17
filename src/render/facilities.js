@@ -35,6 +35,74 @@ export function drawNoAccessBadge(ctx, x, y, w, h) {
   ctx.textAlign = 'start';
 }
 
+// Flames along the bottom of a burning unit; they grow and flicker with the
+// fire's strength (0-100).
+export function drawFlames(ctx, x, y, w, h, intensity, seconds) {
+  const n = Math.max(2, Math.round(w / (h * 0.55)));
+  const power = 0.35 + (Math.min(100, intensity) / 100) * 0.65;
+  ctx.save();
+  roundedRectPath(ctx, x, y, w, h, h * 0.1);
+  ctx.clip();
+  ctx.fillStyle = 'rgba(255,90,20,0.28)';
+  ctx.fillRect(x, y, w, h);
+  for (let layer = 0; layer < 2; layer++) {
+    ctx.fillStyle = layer === 0 ? '#ff5a1f' : '#ffd23f';
+    for (let i = 0; i < n; i++) {
+      const bx = x + ((i + 0.5) * w) / n;
+      const flick = 0.75 + 0.25 * Math.sin(seconds * 9 + i * 1.7 + layer);
+      const fh = h * 0.85 * power * flick * (layer === 0 ? 1 : 0.62);
+      const fw = (w / n) * (layer === 0 ? 0.62 : 0.34);
+      ctx.beginPath();
+      ctx.moveTo(bx - fw, y + h);
+      ctx.quadraticCurveTo(bx - fw * 0.9, y + h - fh * 0.55, bx + Math.sin(seconds * 6 + i) * fw * 0.3, y + h - fh);
+      ctx.quadraticCurveTo(bx + fw * 0.9, y + h - fh * 0.55, bx + fw, y + h);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+
+// A swarm of small dark bugs on a pest-ridden unit.
+export function drawPests(ctx, x, y, w, h, seconds) {
+  ctx.save();
+  ctx.fillStyle = 'rgba(95,140,40,0.22)';
+  roundedRectPath(ctx, x, y, w, h, h * 0.1);
+  ctx.fill();
+  ctx.fillStyle = '#2d2a1f';
+  const n = Math.max(4, Math.round(w / (h * 0.35)));
+  for (let i = 0; i < n; i++) {
+    const bx = x + ((i * 0.618 + 0.1) % 1) * w + Math.sin(seconds * 3 + i) * h * 0.08;
+    const by = y + h * (0.25 + ((i * 0.37) % 0.6)) + Math.cos(seconds * 2.6 + i * 2) * h * 0.06;
+    ctx.beginPath();
+    ctx.ellipse(bx, by, h * 0.05, h * 0.035, Math.sin(seconds + i), 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+// A unit shut for repairs after a fire.
+export function drawClosed(ctx, x, y, w, h) {
+  ctx.save();
+  ctx.fillStyle = 'rgba(18,22,32,0.6)';
+  roundedRectPath(ctx, x, y, w, h, h * 0.1);
+  ctx.fill();
+  drawIcon(ctx, 'wrench', x + w / 2, y + h / 2, Math.min(h * 0.28, w * 0.3), '#ffd166');
+  ctx.restore();
+}
+
+// Tiny water drops along the roof line of a building with sprinklers.
+export function drawSprinklers(ctx, x, y, w, h) {
+  ctx.fillStyle = '#5ab4e8';
+  const n = Math.max(2, Math.round(w / (h * 0.6)));
+  for (let i = 0; i < n; i++) {
+    const sx = x + ((i + 0.5) * w) / n;
+    ctx.beginPath();
+    ctx.arc(sx, y + h * 0.07, Math.max(1.5, h * 0.035), 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
 // A little rubbish bin on the top-right corner of a unit that is getting dirty.
 export function drawTrashBadge(ctx, x, y, w, h, level) {
   const s = Math.max(9, Math.min(h * 0.42, 18));
@@ -241,9 +309,13 @@ export function drawFacility(ctx, typeId, def, x, y, w, h, cellPx, detailed, loo
   w -= inset * 2;
   h -= inset * 2;
 
-  ctx.fillStyle = color;
-  roundedRectPath(ctx, x, y, w, h, h * 0.12);
-  ctx.fill();
+  // The top tile of the Crown is drawn as a crown shape, with sky showing between the points.
+  const crownTop = def.style === 'crown' && (look.tileIndex ?? 0) === (look.tileTotal ?? 1) - 1;
+  if (!(crownTop && detailed)) {
+    ctx.fillStyle = color;
+    roundedRectPath(ctx, x, y, w, h, h * 0.12);
+    ctx.fill();
+  }
   if (!detailed) return;
 
   const dark = shade(color, 0.25);
@@ -343,6 +415,52 @@ export function drawFacility(ctx, typeId, def, x, y, w, h, cellPx, detailed, loo
     ctx.arc(x + w / 2 - h * 0.18, y + h * 0.55, h * 0.16, 0, Math.PI * 2);
     ctx.arc(x + w / 2 + h * 0.18, y + h * 0.55, h * 0.16, 0, Math.PI * 2);
     ctx.fill();
+  } else if (kind === 'crown') {
+    const top = (look.tileIndex ?? 0) === (look.tileTotal ?? 1) - 1;
+    if (top) {
+      // The crown itself: a band with five tall points and jewels.
+      const baseY = y + h * 0.5;
+      ctx.fillStyle = color;
+      roundedRectPath(ctx, x, baseY, w, h * 0.5, h * 0.08);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(x, baseY + h * 0.05);
+      const points = 5;
+      for (let i = 0; i < points; i++) {
+        const px = x + (w * (i + 0.5)) / points;
+        ctx.lineTo(x + (w * i) / points + w / points / 2 - w / points / 2, baseY);
+        ctx.lineTo(px, y + (i === 2 ? 0 : h * 0.12));
+        ctx.lineTo(x + (w * (i + 1)) / points, baseY);
+      }
+      ctx.closePath();
+      ctx.fill();
+      for (let i = 0; i < points; i++) {
+        const px = x + (w * (i + 0.5)) / points;
+        ctx.fillStyle = i === 2 ? '#e0405a' : '#fffbe0';
+        ctx.beginPath();
+        ctx.arc(px, y + (i === 2 ? 0 : h * 0.12), h * (i === 2 ? 0.09 : 0.06), 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = '#e0405a';
+      ctx.beginPath();
+      ctx.arc(x + w / 2, baseY + h * 0.25, h * 0.11, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      // Gold hall below it: columns and arched windows.
+      for (let i = 0; i < cells; i++) {
+        const cx = x + i * cellPx + cellPx / 2;
+        ctx.fillStyle = accent;
+        ctx.beginPath();
+        ctx.moveTo(cx - cellPx * 0.22, y + h * 0.88);
+        ctx.lineTo(cx - cellPx * 0.22, y + h * 0.35);
+        ctx.arc(cx, y + h * 0.35, cellPx * 0.22, Math.PI, 0);
+        ctx.lineTo(cx + cellPx * 0.22, y + h * 0.88);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.fillStyle = dark;
+      ctx.fillRect(x, y + h * 0.9, w, h * 0.1);
+    }
   } else if (typeId === 'escalator') {
     // A diagonal belt with chevrons; flips every other floor like stairs.
     const flip = (look.tileIndex ?? 0) % 2 === 1;

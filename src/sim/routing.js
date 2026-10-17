@@ -22,6 +22,7 @@
 
 import { getReach } from './tower.js';
 import { effectiveStops } from './shafts.js';
+import { weatherFx } from './weather.js';
 import { queueLength } from './elevators.js';
 
 // The static part of the graph only changes when the tower changes.
@@ -119,6 +120,13 @@ export function planRoute(game, config, from, to) {
     return [{ type: 'walk', floor: from.floor, from: from.x, to: to.x }];
   }
 
+  // Weather changes how much people dislike walking and stairs (rain pushes
+  // them toward the elevators), and fires close elevator stops.
+  const wfx = weatherFx(game, config);
+  const walkCost = wfx.walkCostMult ?? 1;
+  const stairCost = wfx.stairCostMult ?? 1;
+  const fire = game.tenants.fire;
+
   const dist = new Array(nodes.length).fill(Infinity);
   const prev = new Array(nodes.length).fill(-2); // -1 = came from the start
   const heap = new Heap();
@@ -131,7 +139,7 @@ export function planRoute(game, config, from, to) {
   };
 
   for (const i of byFloor.get(from.floor) ?? []) {
-    if (nodes[i].run === startRun) relax(i, Math.abs(nodes[i].x - from.x) / walk, -1);
+    if (nodes[i].run === startRun) relax(i, (Math.abs(nodes[i].x - from.x) / walk) * walkCost, -1);
   }
 
   let goalCost = Infinity;
@@ -143,7 +151,7 @@ export function planRoute(game, config, from, to) {
     const n = nodes[i];
 
     if (n.floor === to.floor && n.run === goalRun) {
-      const c = d + Math.abs(n.x - to.x) / walk;
+      const c = d + (Math.abs(n.x - to.x) / walk) * walkCost;
       if (c < goalCost) {
         goalCost = c;
         goalFrom = i;
@@ -151,13 +159,13 @@ export function planRoute(game, config, from, to) {
     }
     for (const j of byFloor.get(n.floor) ?? []) {
       const m = nodes[j];
-      if (j !== i && m.run === n.run) relax(j, d + Math.abs(m.x - n.x) / walk, i);
+      if (j !== i && m.run === n.run) relax(j, d + (Math.abs(m.x - n.x) / walk) * walkCost, i);
     }
     if (n.kind !== 'elevator') {
       // stairs or escalator: one floor at a time
       for (const g of [n.floor - 1, n.floor + 1]) {
         const j = lookup.get(`${n.tid}:${g}`);
-        if (j !== undefined) relax(j, d + n.sec, i);
+        if (j !== undefined) relax(j, d + n.sec * stairCost, i);
       }
     } else {
       const line = queueLength(game, n.tid, n.floor);
@@ -166,8 +174,8 @@ export function planRoute(game, config, from, to) {
       const carFactor = shaft ? (1 / Math.sqrt(shaft.cars.length || 1)) * (1 / shaft.speedMult) ** 0.5 : 1;
       const wait = (rt.elevatorBaseWaitSec + rt.elevatorPerWaiterSec * line) * carFactor;
       for (const j of byTransport.get(n.tid)) {
-        // every other stop of this shaft
-        if (j === i) continue;
+        // every other stop of this shaft (not a floor that is on fire)
+        if (j === i || fire.has(nodes[j].floor) || fire.has(n.floor)) continue;
         const ride = (rt.elevatorRideSecPerFloor * Math.abs(nodes[j].floor - n.floor)) / (shaft ? shaft.speedMult : 1);
         relax(j, d + wait + ride, i);
       }

@@ -13,7 +13,7 @@
 // Pure calculations on the game state; the numbers are in config.js
 // (`services`, `power`, `parking`) and catalog.js.
 
-import { isConnected } from './tower.js';
+import { isConnected, unlockTier } from './tower.js';
 import { districtBonus } from './districts.js';
 
 export function createServices() {
@@ -107,7 +107,14 @@ function getModel(game, config) {
 
 export const coverageOf = (game, config, f) => getModel(game, config).coverage.get(f.id) ?? { security: 0, medical: 0, maintenance: 0, clean: 0 };
 export const noiseOf = (game, config, f) => getModel(game, config).noise.get(f.id) ?? 0;
-export const powerStatus = (game, config) => getModel(game, config).power;
+// Power demand and supply right now. A heat wave raises demand (air conditioning).
+export function powerStatus(game, config) {
+  const p = getModel(game, config).power;
+  const mult = config.weather.kinds[game.weather?.kind]?.powerDemandMult ?? 1;
+  if (mult === 1) return p;
+  const demand = p.demand * mult;
+  return { demand, supply: p.supply, ratio: demand > 0 ? Math.min(1, p.supply / demand) : 1 };
+}
 export const recyclingCut = (game, config) => getModel(game, config).trashCut;
 
 // Stress relief per second from nearby atria for someone on `floor`.
@@ -157,9 +164,11 @@ export function dailyServicesUpdate(game, config) {
   const sys = game.services;
   const genMult = 1 - model.trashCut;
 
+  // Rubbish only becomes a problem once you are able to build maintenance hubs.
+  const trashMatters = game.tower.tier + 1 >= unlockTier(config, 'maintenance');
   for (const f of game.tower.facilities.values()) {
     const def = config.facilities[f.type];
-    if (!def.capacity && !def.purposes) continue;
+    if (!trashMatters || (!def.capacity && !def.purposes)) continue;
     const tenants = game.tenants.byFacility.get(f.id)?.size ?? 0;
     const visits = sys.visitsToday[f.id] ?? 0;
     const made = (tenants * tc.perTenantPerDay + visits * tc.perVisit + tc.basePerDay) * genMult;

@@ -7,6 +7,7 @@
 
 import { CATEGORIES, facilitiesInCategory } from '../data/facilities.js';
 import { formatMoney } from '../data/format.js';
+import { unlockTier } from '../sim/tower.js';
 
 const ICONS = {
   pan:
@@ -118,12 +119,18 @@ export function createToolbar(root, config, callbacks) {
       for (const def of facilitiesInCategory(config, category)) {
         const selected = tool.kind === 'build' && tool.typeId === def.id;
         const poor = funds < def.cost;
+        // Buildings unlock with your rating: show a lock (and the star level) instead of a price.
+        const needTier = unlockTier(config, def.id);
+        const locked = needTier > callbacks.getTier() + 1;
         const b = makeButton(
-          'item' + (selected ? ' active' : '') + (poor ? ' poor' : ''),
-          `<span class="swatch" style="background:${def.color};border-color:${def.accent}">${def.width}</span>
+          'item' + (selected ? ' active' : '') + (poor && !locked ? ' poor' : '') + (locked ? ' locked' : ''),
+          `<span class="swatch" style="background:${def.color};border-color:${def.accent}">${locked ? '&#128274;' : def.width}</span>
            <span class="name">${def.name}</span>
-           <span class="cost">${poor ? 'Need ' : ''}${formatMoney(def.cost)}${def.vertical ? '/floor' : ''}</span>`,
-          () => selectTool({ kind: 'build', typeId: def.id }),
+           <span class="cost">${locked ? `${'&#9733;'.repeat(needTier)} ${config.tiers[needTier - 1].name}` : `${poor ? 'Need ' : ''}${formatMoney(def.cost)}${def.vertical ? '/floor' : ''}`}</span>`,
+          () => {
+            if (locked) callbacks.onLockedTap(`Unlocks at ${config.tiers[needTier - 1].name}`);
+            else selectTool({ kind: 'build', typeId: def.id });
+          },
         );
         itemsEl.appendChild(b);
       }
@@ -164,9 +171,12 @@ export function createToolbar(root, config, callbacks) {
     // affordable has actually changed.
     update(newFunds) {
       funds = newFunds;
-      const key = Object.values(config.facilities)
-        .map((def) => (funds < def.cost ? '1' : '0'))
-        .join('');
+      const key =
+        callbacks.getTier() +
+        ':' +
+        Object.values(config.facilities)
+          .map((def) => (funds < def.cost ? '1' : '0'))
+          .join('');
       if (key !== affordKey) {
         affordKey = key;
         render();

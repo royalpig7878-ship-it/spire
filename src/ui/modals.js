@@ -9,6 +9,20 @@ import { formatMoney } from '../data/format.js';
 const COIN_ICON =
   '<svg class="coin" viewBox="0 0 24 24" width="34" height="34"><circle cx="12" cy="12" r="10" fill="#ffd166" stroke="#c98f12" stroke-width="2"/><text x="12" y="17" text-anchor="middle" font-size="14" font-weight="700" fill="#8a5a00">$</text></svg>';
 
+// Falling paper pieces for the celebration cards (pure CSS animation).
+function confettiHtml(count = 36) {
+  const colors = ['#ffd166', '#ef476f', '#06d6a0', '#118ab2', '#f78c6b', '#c77dff'];
+  let html = '';
+  for (let i = 0; i < count; i++) {
+    const left = Math.round(Math.random() * 100);
+    const delay = (Math.random() * 1.2).toFixed(2);
+    const dur = (2 + Math.random() * 2).toFixed(2);
+    const color = colors[i % colors.length];
+    html += `<i style="left:${left}%;background:${color};animation-delay:${delay}s;animation-duration:${dur}s"></i>`;
+  }
+  return html;
+}
+
 export function createModals(root) {
   let backdrop = null;
 
@@ -106,6 +120,116 @@ export function createModals(root) {
       card.querySelector('#modal-decline').addEventListener('click', () => {
         close();
         onDecline();
+      });
+    },
+
+    // ---- Rating, inspections and random-event pop-ups ----
+
+    // The celebration when the tower rises a tier.
+    showTierUp(ev, onDone) {
+      const stars = '&#9733;'.repeat(ev.tier + 1);
+      const card = open(`
+        <div class="confetti" aria-hidden="true">${confettiHtml()}</div>
+        <h2 class="center big">${stars}</h2>
+        <h2 class="center">You are now ${ev.name}!</h2>
+        <p class="center">The inspector approved (score ${ev.score}).</p>
+        <div class="row"><span>Bonus</span><span>+${formatMoney(ev.bonusFunds)}</span></div>
+        <div class="row"><span>Build limit</span><span>${ev.maxFloor} floors, ${ev.width} cells wide</span></div>
+        <div class="section-label">Now you can build</div>
+        <p class="unlock-list">${ev.unlocks.join(' · ')}</p>
+        <button class="primary" id="modal-ok" type="button">Wonderful</button>`);
+      card.querySelector('#modal-ok').addEventListener('click', () => {
+        close();
+        onDone();
+      });
+    },
+
+    showInspectionResult(ev, onDone) {
+      const card = open(`
+        <h2>Inspection failed</h2>
+        <p>Score ${ev.score}. The inspector needs ${ev.need} to approve.</p>
+        <ul class="notes">${ev.notes.map((n) => `<li>${n}</li>`).join('')}</ul>
+        <p>They will come back in ${ev.retryDays} days. Fix what went wrong first.</p>
+        <button class="primary" id="modal-ok" type="button">OK</button>`);
+      card.querySelector('#modal-ok').addEventListener('click', () => {
+        close();
+        onDone();
+      });
+    },
+
+    showVipResult(ev, onDone) {
+      const card = open(`
+        <h2>${ev.pass ? 'The VIP was delighted' : 'The VIP left unimpressed'}</h2>
+        <p>Score ${ev.score}. ${ev.pass ? `Reward: ${formatMoney(ev.reward)} and a better reputation.` : 'Your reputation took a small hit.'}</p>
+        <ul class="notes">${ev.notes.map((n) => `<li>${n}</li>`).join('')}</ul>
+        <button class="primary" id="modal-ok" type="button">OK</button>`);
+      card.querySelector('#modal-ok').addEventListener('click', () => {
+        close();
+        onDone();
+      });
+    },
+
+    showExtortion(ev, { onPay, onTrust }) {
+      const card = open(`
+        <h2>Anonymous threat</h2>
+        <p>"Pay ${formatMoney(ev.demand)} or something in your tower will go off."</p>
+        <button class="choice" id="ext-pay" type="button"><span>Pay up</span><span>-${formatMoney(ev.demand)}</span></button>
+        <button class="choice" id="ext-trust" type="button"><span>Trust security</span><span>${Math.round(ev.chance * 100)}% to find it</span></button>
+        <p class="note">${ev.share > 0 ? `Security covers ${Math.round(ev.share * 100)}% of your buildings, which also softens damage if it fails.` : 'You have no security cover, so a failure would hurt badly.'}</p>`);
+      card.querySelector('#ext-pay').addEventListener('click', () => {
+        close();
+        onPay();
+      });
+      card.querySelector('#ext-trust').addEventListener('click', () => {
+        close();
+        onTrust();
+      });
+    },
+
+    showVictory(ev, onDone) {
+      const card = open(`
+        <div class="confetti" aria-hidden="true">${confettiHtml(60)}</div>
+        <h2 class="center big">&#9733;&#9733;&#9733;&#9733;&#9733;</h2>
+        <h2 class="center">The Crown shines over the city</h2>
+        <p class="center">${ev.people.toLocaleString('en-US')} people call your tower home. You built a legend.</p>
+        <button class="primary" id="modal-ok" type="button">Keep playing</button>`);
+      card.querySelector('#modal-ok').addEventListener('click', () => {
+        close();
+        onDone();
+      });
+    },
+
+    // Tier checklist (opened from the star badge). `status` is progress.tierStatus.
+    showProgress({ tierName, stars, plot, status, inspection, won, crown, onClose }) {
+      const rows = status
+        ? status.checks
+            .map((c) => {
+              const value = c.flag ? '' : `${c.number ? c.have.toLocaleString('en-US') : c.have}${c.suffix ?? ''} / ${c.number ? c.need.toLocaleString('en-US') : c.need}${c.suffix ?? ''}`;
+              return `<div class="row check ${c.ok ? 'ok' : ''}"><span>${c.ok ? '&#10003;' : '&#9675;'} ${c.label}</span><span>${value}</span></div>`;
+            })
+            .join('')
+        : '';
+      const inspectionLine = inspection
+        ? `<p class="note">${inspection.state === 'scheduled' ? 'An inspector is on the way.' : 'An inspector is touring your tower now.'}</p>`
+        : status && status.allMet
+          ? '<p class="note">Everything is met. An inspector will be invited at midnight.</p>'
+          : '';
+      const card = open(`
+        <h2>${'&#9733;'.repeat(stars)} ${tierName}</h2>
+        <div class="row"><span>You may build up to</span><span>${plot.maxFloor} floors</span></div>
+        ${
+          status
+            ? `<div class="section-label">To reach ${status.next.name}</div>${rows}${inspectionLine}`
+            : won
+              ? '<p>You built the Crown. Your tower is a legend.</p>'
+              : `<div class="section-label">The Crown</div>
+                 <div class="row check ${crown.peopleOk ? 'ok' : ''}"><span>${crown.peopleOk ? '&#10003;' : '&#9675;'} People</span><span>${crown.people.toLocaleString('en-US')} / ${crown.need.toLocaleString('en-US')}</span></div>
+                 <p class="note">Build the Crown high on the roof (Special tab) to win.</p>`
+        }
+        <button class="secondary" id="modal-ok" type="button">Close</button>`);
+      card.querySelector('#modal-ok').addEventListener('click', () => {
+        close();
+        onClose();
       });
     },
 

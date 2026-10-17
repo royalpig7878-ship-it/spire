@@ -6,6 +6,7 @@
 // render/elevators.js instead. Reads tenant state; never changes it.
 
 import { drawFigure, MOOD_COLORS, moodOfStress } from './figures.js';
+import { drawIcon } from './facilities.js';
 
 export function drawTenants(ctx, W, H, camera, config, sys) {
   const zoom = camera.zoom;
@@ -28,6 +29,13 @@ export function drawTenants(ctx, W, H, camera, config, sys) {
     if (x < -20 || x > W + 20 || baseY < -20 || baseY - floorPx > H) continue;
 
     const mood = moodOfStress(t.stress, sc);
+    if (t.kind === 'inspector') {
+      // Dark suit, bigger, with a gold star: easy to follow on its tour.
+      ctx.globalAlpha = 1;
+      drawFigure(ctx, x, baseY, floorPx * 0.78, '#27323f', mood, '#f1d3b3');
+      drawIcon(ctx, 'star', x, baseY - floorPx * 1.12, Math.max(5, floorPx * 0.13), '#ffd166');
+      continue;
+    }
     const size = floorPx * (inside ? 0.46 : 0.62);
     ctx.globalAlpha = inside ? 0.9 : 1;
     drawFigure(ctx, x, baseY, size, MOOD_COLORS[mood], inside ? 'calm' : mood, config.tenants.traits[t.trait].color);

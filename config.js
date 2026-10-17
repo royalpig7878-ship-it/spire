@@ -82,7 +82,7 @@ export const config = {
   // --- Saving ---
   save: {
     key: 'spire.save', // localStorage key
-    version: 3, // bump when the save format changes (see src/sim/save.js)
+    version: 4, // bump when the save format changes (see src/sim/save.js)
   },
 
   // --- Build interaction ---
@@ -296,7 +296,7 @@ export const config = {
     },
 
     // Moving out hurts the tower's reputation (rating tiers in M7 will use it).
-    reputation: { start: 50, perMoveOut: -1.5, perGoodDay: 0.4, goodMoodAbove: 70 },
+    reputation: { start: 50, perMoveOut: -1, perGoodDay: 0.8, goodMoodAbove: 70 },
   },
 
   // --- Diagnostic overlays (the heat-map layers) ---
@@ -308,6 +308,142 @@ export const config = {
       bad: ['#fff1b8', '#f7b267', '#e0603c', '#8e1d4c'], // stress, wait: high is bad
       good: ['#e4f1f3', '#8fd0d6', '#3a9fb0', '#0d5a73'], // occupancy: high is good
       money: ['#f4f1d0', '#c4de8a', '#74b36b', '#1f6e43'], // income
+    },
+  },
+
+  // --- Rating tiers: the road from empty plot to the Crown ---
+  // `requires` is what the NEXT tier asks of you: people, mood, reputation and
+  // buildings that must exist. Meet it and an inspector comes to judge your
+  // tower; pass and you rise. `unlocks` lists what each tier lets you build,
+  // `plot` the room you get, and `peoplePerTenant` how many people each
+  // simulated tenant stands for (bigger towers hold bigger households and
+  // teams, so 500 simulated tenants can add up to 15,000+ people).
+  tiers: [
+    {
+      id: 'foothold',
+      name: 'Foothold',
+      plot: { halfWidthCells: 24, maxFloor: 10 },
+      peoplePerTenant: 1,
+      unlocks: ['lobby', 'office', 'studio', 'apartment', 'cafe', 'stairs', 'elevator'],
+    },
+    {
+      id: 'rising',
+      name: 'Rising',
+      plot: { halfWidthCells: 28, maxFloor: 20 },
+      peoplePerTenant: 3,
+      requires: { people: 40, mood: 60, reputation: 0, facilities: [] },
+      bonus: { funds: 10000, reputation: 3 },
+      unlocks: ['shop', 'restaurant', 'officeLarge', 'guestRoom', 'gym', 'maintenance', 'security', 'parking', 'substation', 'escalator', 'elevatorExpress', 'skylobby'],
+    },
+    {
+      id: 'established',
+      name: 'Established',
+      plot: { halfWidthCells: 32, maxFloor: 35 },
+      peoplePerTenant: 8,
+      requires: { people: 250, mood: 65, reputation: 40, facilities: ['security', 'maintenance'] },
+      bonus: { funds: 40000, reputation: 4 },
+      unlocks: ['coworking', 'clinic', 'recycling', 'suite', 'foodCourt', 'cinema', 'atrium', 'elevatorService'],
+    },
+    {
+      id: 'prestigious',
+      name: 'Prestigious',
+      plot: { halfWidthCells: 36, maxFloor: 55 },
+      peoplePerTenant: 18,
+      requires: { people: 1500, mood: 70, reputation: 55, facilities: ['clinic', 'skylobby', 'atrium'] },
+      bonus: { funds: 120000, reputation: 5 },
+      unlocks: ['penthouse', 'ballroom'],
+    },
+    {
+      id: 'legendary',
+      name: 'Legendary',
+      plot: { halfWidthCells: 40, maxFloor: 75 },
+      peoplePerTenant: 32,
+      requires: { people: 6500, mood: 75, reputation: 65, facilities: ['elevatorExpress', 'recycling', 'substation', 'elevatorService'] },
+      bonus: { funds: 300000, reputation: 6 },
+      unlocks: ['crown'],
+    },
+  ],
+
+  // The Crown: the landmark that wins the game. Build it high on the roof.
+  crown: { minFloor: 30, requiresPeople: 15000 },
+
+  // --- Inspectors and VIP visits ---
+  // An inspector walks a tour of your tower. Their stress is judged like a
+  // tenant's: long waits, crowds and problems fail the visit.
+  inspector: {
+    arriveHour: 10, // they arrive the morning after you qualify, after the rush
+    tourStops: 4,
+    dwellMin: [15, 25], // game minutes at each stop
+    trait: 'punctual', // inspectors are fairly picky (see traits)
+    stressWeight: 0.8, // how much their peak stress counts against the tower
+    passScore: 50, // score = 100 - (peak stress x weight) - penalties; pass at or above this
+    incidentPenalty: 12, // per active fire, power dip or pest problem
+    dirtyPenalty: 6, // per dirty building they visit
+    retryCooldownDays: 3, // wait this long after a failed inspection
+    vip: { fundsPerTier: 4000, reputation: 3, failReputation: -2 },
+  },
+
+  // --- Random events (always announced, always escapable) ---
+  incidents: {
+    graceDays: 4, // nothing happens in the first days
+    chancePerDay: 0.22,
+    minDaysBetween: 2,
+    weights: { fire: 3, extortion: 2, outage: 2, pests: 2, vip: 1.5 },
+    // Rating tier (0 = Foothold) at which each event may start. The nastier
+    // ones wait until you can build what answers them (security, maintenance).
+    fromTier: { fire: 0, outage: 0, extortion: 1, pests: 1, vip: 1 },
+    fire: {
+      growthPerSec: 2.2, // fire grows this fast...
+      sprinklerSuppress: 3.0, // ...minus this if the building has sprinklers (puts it out)
+      maintenanceSuppress: 1.3, // ...and this per covering maintenance hub (one slows it, two put it out)
+      maxMaintenance: 2,
+      securitySuppress: 0.2,
+      spreadAbove: 45, // a fire this strong may jump to neighbours
+      spreadChancePerSec: 0.05,
+      sprinklerSpreadMult: 0.2,
+      startIntensity: 8,
+      gutAt: 100, // at this strength the building is wrecked
+      repairShare: 0.2, // repair cost as a share of its build price
+      closedDays: 2,
+      smokeStressPerSec: 4, // stress for people on a burning floor
+      sprinklerCostPerCell: 150,
+    },
+    extortion: {
+      demandShareOfFunds: [0.06, 0.12],
+      minDemand: 1500,
+      maxDemand: 60000,
+      baseChance: 0.25, // chance the security office finds the device
+      perSecurity: 0.18, // each security office adds this
+      coverageBonus: 0.35, // times the share of buildings with security cover
+      maxChance: 0.92,
+      damageMult: 1.8, // damage if the device goes off, times the demand
+      stressSpike: 20,
+      reputationHit: -3,
+      successReputation: 2,
+    },
+    outage: { durationMin: [120, 240], baseFactor: 0.3, surplusBonus: 1.0, maxFactor: 0.85 },
+    pests: { needTrashAbove: 65, stressPerSec: 0.4, clearBelow: 40, maxDays: 8 },
+  },
+
+  // --- Weather and seasons (a quarter is a season) ---
+  weather: {
+    seasons: ['Spring', 'Summer', 'Autumn', 'Winter'],
+    odds: {
+      Spring: { clear: 0.45, cloudy: 0.3, rain: 0.25 },
+      Summer: { clear: 0.55, cloudy: 0.15, rain: 0.1, heat: 0.2 },
+      Autumn: { clear: 0.35, cloudy: 0.3, rain: 0.35 },
+      Winter: { clear: 0.3, cloudy: 0.3, snow: 0.4 },
+    },
+    kinds: {
+      clear: { label: 'Clear' },
+      cloudy: { label: 'Cloudy' },
+      // Rain: people dislike walking and stairs, so more take the elevator;
+      // indoor shops do well; arrivals come in damp and a bit stressed.
+      rain: { label: 'Rain', walkCostMult: 1.4, stairCostMult: 1.35, salesMult: 1.15, arrivalStress: 4 },
+      // Heat wave: air conditioning drains the grid and the power bill.
+      heat: { label: 'Heat wave', powerDemandMult: 1.25, powerPriceMult: 1.8, salesMult: 1.05 },
+      // Snow: the street slows everyone down.
+      snow: { label: 'Snow', walkSpeedMult: 0.8, arrivalDelayMin: 40, salesMult: 0.9 },
     },
   },
 
@@ -335,7 +471,8 @@ export const config = {
   world: {
     groundY: 0, // world-space y of street level
     groundColor: '#4a5a4e', // underground
-    grassColor: '#6fae5b', // thin strip along street level
+    grassColor: '#6fae5b', // thin strip along street level (spring)
+    seasonGrass: ['#6fae5b', '#8bb94d', '#c08a3c', '#cfd8dc'], // spring, summer, autumn, winter
     grassHeight: 10, // world pixels
     plotOutlineColor: 'rgba(255,255,255,0.5)',
     gridColor: 'rgba(255,255,255,0.28)', // cell grid, shown while building

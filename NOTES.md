@@ -78,6 +78,20 @@ milestone, once you've confirmed it works — never before.
 
 ## Milestone log
 
+- **M7 — Ratings, events, weather: the full game loop.** Five tiers
+  (Foothold, Rising, Established, Prestigious, Legendary, shown as stars).
+  Tap the stars for the progress checklist. Meet a tier's goals and an
+  **inspector** tours your tower the next morning; pass and you rise (bonus
+  money, bigger plot, new buildings, a ceremony). Buildings are locked
+  until their tier. Random events: **fire** (sprinklers and maintenance put
+  it out; elevators skip burning floors), **pests**, **power dips**,
+  **extortion** (pay or trust security) and **VIP visits**; each is
+  announced with a "Show" button. **Weather and seasons**: rain, heat
+  waves, snow. **The Crown** (Special tab, Legendary only, needs 15,000
+  people) wins the game. Everything about tiers, events and weather is in
+  `config.js` (`tiers`, `inspector`, `incidents`, `weather`, `crown`).
+  Save format is now version 4.
+
 - **M6 — Full catalog and districts**: 29 building types (see
   `catalog.js`, which `config.js` imports): offices, studios and
   penthouses, hotel rooms and a ballroom, restaurants, shops, food courts,

@@ -38,6 +38,7 @@
 import { effectiveStops } from './shafts.js';
 import { shaftCars } from './tower.js';
 import { powerStatus } from './services.js';
+import { outageFactor } from './incidents.js';
 
 const EPS = 1e-6;
 const callKey = (floor, dir) => `${floor}:${dir}`;
@@ -170,6 +171,7 @@ export function requestRide(game, config, from, to, opts = {}) {
   for (const shaft of game.elevators.shafts.values()) {
     if (opts.shaftId !== undefined && shaft.id !== opts.shaftId) continue;
     if (!shaft.stops.has(from) || !shaft.stops.has(to)) continue; // this shaft has no door there
+    if (game.tenants.fire.has(from) || game.tenants.fire.has(to)) continue; // no stopping at a fire
     const length = (shaft.waiting.get(from) ?? []).length;
     if (length >= config.elevators.maxQueuePerFloor) continue;
     if (!best || length < best.length) best = { shaft, length };
@@ -245,11 +247,18 @@ export function updateElevators(game, config, dt) {
     }
   }
 
-  // A power shortage (brownout) slows every car down.
+  // A power shortage (brownout) or a power dip slows every car down.
   const power = powerStatus(game, config);
-  const powerMult = Math.max(config.power.minSpeedFactor, power.ratio);
+  const powerMult = Math.max(config.power.minSpeedFactor, power.ratio) * outageFactor(game);
+  const fire = game.tenants.fire;
   for (const shaft of sys.shafts.values()) {
     shaft.powerMult = powerMult;
+    // Cars do not serve floors that are on fire: anyone waiting there goes by stairs.
+    if (fire.size) {
+      for (const [floor, queue] of shaft.waiting) {
+        if (fire.has(floor)) for (const r of queue.slice()) cancelRider(game, r);
+      }
+    }
     updateShaft(shaft, config, dt);
   }
 }

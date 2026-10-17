@@ -21,6 +21,9 @@ import {
 import { stopWaitSeconds } from './sim/diagnostics.js';
 import { bandOf, designateDistrict, applyDistrict, clearDistrict } from './sim/districts.js';
 import { powerStatus } from './sim/services.js';
+import { installSprinklers, resolveExtortion } from './sim/incidents.js';
+import { tierStatus, onCrownBuilt, peopleCount } from './sim/progress.js';
+import { weatherLabel } from './sim/weather.js';
 import { calendar, formatTime } from './sim/clock.js';
 import { saveGame, loadGame, hasSave } from './sim/save.js';
 import { createInputController } from './ui/input.js';
@@ -28,6 +31,7 @@ import { createToolbar } from './ui/toolbar.js';
 import { createHud } from './ui/hud.js';
 import { createModals } from './ui/modals.js';
 import { createInfoPanel } from './ui/infopanel.js';
+import { createAlerts } from './ui/alerts.js';
 import { renderWorld } from './render/world.js';
 import { OVERLAY_MODES } from './render/overlays.js';
 import { formatMoney } from './data/format.js';
@@ -69,8 +73,23 @@ const toolbar = createToolbar(uiRoot, config, {
   onDemoToggle() {
     game.demoTraffic = !game.demoTraffic;
   },
+  getTier: () => game.tower.tier,
+  onLockedTap: (message) => toolbar.toast(message),
 });
 const modals = createModals(uiRoot);
+
+// Camera glide: alerts can ask the camera to swing to a place.
+let cameraGoal = null; // { x, y, zoom }
+const alerts = createAlerts(uiRoot, {
+  onFocus(alert) {
+    const { cellWidth, floorHeight } = config.grid;
+    cameraGoal = {
+      x: alert.cell * cellWidth,
+      y: -(alert.floor + 0.5) * floorHeight,
+      zoom: Math.max(camera.zoom, 0.9),
+    };
+  },
+});
 const infoPanel = createInfoPanel(uiRoot, config, {
   getGame: () => game,
   onClose() {
@@ -86,10 +105,28 @@ const infoPanel = createInfoPanel(uiRoot, config, {
     const result = toggleShaftStop(game.tower, config, facility, floor);
     if (!result.ok) toolbar.toast(result.reason);
   },
+  onSprinklers(facility) {
+    const result = installSprinklers(game, config, facility);
+    toolbar.toast(result.ok ? `Sprinklers installed  -${formatMoney(result.cost)}` : result.reason);
+  },
 });
 const hud = createHud(uiRoot, config, {
   onSpeed(speed) {
     game.speed = speed;
+  },
+  onProgress() {
+    const crownNeed = config.crown.requiresPeople;
+    const people = peopleCount(game, config);
+    modals.showProgress({
+      tierName: config.tiers[game.tower.tier].name,
+      stars: game.tower.tier + 1,
+      plot: game.tower.plot,
+      status: tierStatus(game, config),
+      inspection: game.progress.inspection,
+      won: game.progress.won,
+      crown: { people, need: crownNeed, peopleOk: people >= crownNeed },
+      onClose() {},
+    });
   },
   onOverlay(mode) {
     ui.overlay = OVERLAY_MODES.includes(mode) ? mode : 'off';
@@ -154,6 +191,22 @@ function pumpModals() {
     modals.showReport(event.report, () => {});
   } else if (event.type === 'fireSale') {
     openFireSale();
+  } else if (event.type === 'tierUp') {
+    modals.showTierUp(event, () => saveGame(game, config));
+  } else if (event.type === 'inspection') {
+    modals.showInspectionResult(event, () => {});
+  } else if (event.type === 'vipResult') {
+    modals.showVipResult(event, () => {});
+  } else if (event.type === 'victory') {
+    modals.showVictory(event, () => saveGame(game, config));
+  } else if (event.type === 'extortion') {
+    modals.showExtortion(event, {
+      onPay: () => toolbar.toast(resolveExtortion(game, config, 'pay').text),
+      onTrust: () => {
+        const outcome = resolveExtortion(game, config, 'trust');
+        game.alerts.push({ text: outcome.text, kind: outcome.good ? 'good' : 'fire' });
+      },
+    });
   }
 }
 
@@ -177,7 +230,7 @@ function updatePreview(world, pointerType, starting = false) {
     if (def.vertical) {
       // Stairs / elevators: the first press fixes the column and start floor,
       // then dragging up or down chooses how many floors it spans.
-      const clamp = (fl) => Math.max(def.minFloor, Math.min(config.plot.maxFloor, fl));
+      const clamp = (fl) => Math.max(def.minFloor, Math.min(game.tower.plot.maxFloor, fl));
       if (starting || !dragAnchor) dragAnchor = { floor: clamp(floor), cell };
       const current = clamp(floor);
       const bottom = Math.min(dragAnchor.floor, current);
@@ -185,12 +238,13 @@ function updatePreview(world, pointerType, starting = false) {
       const check = canPlace(tower, config, typeId, bottom, dragAnchor.cell, height);
       ui.ghost = { typeId, floor: bottom, cell: dragAnchor.cell, height, ok: check.ok, reason: check.reason };
     } else {
-      const check = canPlace(tower, config, typeId, floor, cell);
-      ui.ghost = { typeId, floor, cell, height: 1, ok: check.ok, reason: check.reason };
+      const height = def.fixedHeight ?? 1; // the Crown is always 3 floors tall
+      const check = canPlace(tower, config, typeId, floor, cell, height);
+      ui.ghost = { typeId, floor, cell, height, ok: check.ok, reason: check.reason };
     }
   } else if (ui.tool.kind === 'district') {
     // Aim at a band of floors; basements and floors above the plot do not count.
-    const band = bandOf(config, Math.max(0, Math.min(config.plot.maxFloor, floor)));
+    const band = bandOf(config, Math.max(0, Math.min(game.tower.plot.maxFloor, floor)));
     const themeId = ui.tool.typeId;
     if (themeId === 'clear') {
       const has = Boolean(tower.districts[band]);
@@ -273,10 +327,10 @@ const placementHandlers = {
     if (ui.ghost) {
       const g = ui.ghost;
       const result = place(tower, config, g.typeId, g.floor, g.cell, game.clock.minutes, g.height);
-      const total = config.facilities[g.typeId].cost * g.height;
-      toolbar.toast(
-        result.ok ? `Built ${config.facilities[g.typeId].name}  -${formatMoney(total)}` : result.reason,
-      );
+      const gdef = config.facilities[g.typeId];
+      const total = gdef.fixedHeight ? gdef.cost : gdef.cost * g.height;
+      toolbar.toast(result.ok ? `Built ${gdef.name}  -${formatMoney(total)}` : result.reason);
+      if (result.ok && gdef.landmark) onCrownBuilt(game, config); // the Crown wins the game
     } else if (ui.districtPreview) {
       const p = ui.districtPreview;
       const theme = config.districts.themes[p.themeId];
@@ -322,10 +376,10 @@ document.addEventListener('visibilitychange', () => {
 function clampCamera() {
   const { cellWidth, floorHeight } = config.grid;
   const margin = config.camera.panMarginPx;
-  const halfPlotW = config.plot.halfWidthCells * cellWidth;
+  const halfPlotW = game.tower.plot.halfWidthCells * cellWidth;
   camera.x = Math.max(-halfPlotW - margin, Math.min(halfPlotW + margin, camera.x));
-  const top = -(config.plot.maxFloor + 1) * floorHeight - margin;
-  const bottom = -config.plot.minFloor * floorHeight + margin;
+  const top = -(game.tower.plot.maxFloor + 1) * floorHeight - margin;
+  const bottom = -game.tower.plot.minFloor * floorHeight + margin;
   camera.y = Math.max(top, Math.min(bottom, camera.y));
 }
 
@@ -339,21 +393,36 @@ const loop = createGameLoop({
     updateGame(game, config, dtSeconds);
   },
   render(alpha) {
+    // Glide toward the place an alert pointed at ("Show").
+    if (cameraGoal) {
+      camera.x += (cameraGoal.x - camera.x) * 0.18;
+      camera.y += (cameraGoal.y - camera.y) * 0.18;
+      camera.zoom += (cameraGoal.zoom - camera.zoom) * 0.18;
+      if (Math.hypot(cameraGoal.x - camera.x, cameraGoal.y - camera.y) < 1.5) cameraGoal = null;
+    }
     clampCamera();
     // While the game is paused/blocked the sim is not ticking: draw cars
     // exactly where they are instead of sliding between stale positions.
     const smooth = game.blocked || game.speed === 0 ? 1 : alpha;
     const cal = calendar(game.clock, config);
+    // News from the simulation (fires, inspector notes...) becomes on-screen alerts.
+    for (const alert of game.alerts) alerts.add(alert);
+    game.alerts.length = 0;
+    alerts.tick();
     hud.update({
       funds: game.tower.funds,
       topFloor: tallestFloor(game.tower),
+      maxFloor: game.tower.plot.maxFloor,
+      stars: game.tower.tier + 1,
       population: game.tenants.stats.population,
       mood: game.tenants.stats.mood,
       dateText: `Y${cal.year} Q${cal.quarter} D${cal.dayOfQuarter}`,
       timeText: formatTime(game.clock),
+      weatherText: weatherLabel(game, config),
       speed: game.speed,
       overlay: ui.overlay,
       power: powerStatus(game, config),
+      outage: game.incidents.outage,
       debtDaysLeft: Math.max(0, config.economy.debtGraceDays - game.economy.debtDays),
     });
     toolbar.update(game.tower.funds);
@@ -363,6 +432,6 @@ const loop = createGameLoop({
 });
 
 // Handy for testing in the browser console: window.spire.game
-window.spire = { game, config, camera, ui, infoPanel };
+window.spire = { game, config, camera, ui, infoPanel, modals, alerts };
 
 loop.start();
