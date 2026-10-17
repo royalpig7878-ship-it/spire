@@ -15,6 +15,7 @@
 //                                          lobby on floor 0, on top of it)
 
 import { computeReach, isFacilityConnected } from './connectivity.js';
+import { hallAt, effectiveStops, isEligibleStop } from './shafts.js';
 
 const cellKey = (floor, cell) => `${floor},${cell}`;
 
@@ -36,21 +37,28 @@ export function createTower(config) {
 
 // ---- Low-level add / remove (keep both lookup tables in step) ----
 
-function usesOverlay(config, type, floor) {
-  return floor === 0 && Boolean(config.facilities[type].transport);
+// An elevator shaft that stands INSIDE a hall (the lobby or a sky lobby) is
+// stored in the overlay table, on top of the hall's own cells.
+function usesOverlay(tower, config, type, floor, cell) {
+  return config.facilities[type].transport === 'elevator' && hallAt(tower, config, floor, cell);
 }
 
 function indexFacility(tower, config, f) {
   for (let fl = f.floor; fl < f.floor + f.height; fl++) {
-    const table = usesOverlay(config, f.type, fl) ? tower.overlay : tower.cells;
-    for (let c = f.cell; c < f.cell + f.width; c++) table.set(cellKey(fl, c), f.id);
+    for (let c = f.cell; c < f.cell + f.width; c++) {
+      const table = usesOverlay(tower, config, f.type, fl, c) ? tower.overlay : tower.cells;
+      table.set(cellKey(fl, c), f.id);
+    }
   }
 }
 
-function unindexFacility(tower, config, f) {
+function unindexFacility(tower, f) {
   for (let fl = f.floor; fl < f.floor + f.height; fl++) {
-    const table = usesOverlay(config, f.type, fl) ? tower.overlay : tower.cells;
-    for (let c = f.cell; c < f.cell + f.width; c++) table.delete(cellKey(fl, c));
+    for (let c = f.cell; c < f.cell + f.width; c++) {
+      const key = cellKey(fl, c);
+      if (tower.overlay.get(key) === f.id) tower.overlay.delete(key);
+      else if (tower.cells.get(key) === f.id) tower.cells.delete(key);
+    }
   }
 }
 
@@ -66,7 +74,8 @@ function addFacility(tower, config, type, floor, cell, extra = {}) {
     builtMinute: extra.builtMinute ?? 0, // game-clock minute it was built (rent is prorated)
     occupied: extra.occupied ?? true, // M4 will drive this from real tenants
   };
-  if (extra.cars !== undefined) facility.cars = extra.cars; // elevator cars (M5 settings)
+  if (extra.cars !== undefined) facility.cars = extra.cars; // elevator cars
+  if (extra.skip !== undefined) facility.skip = extra.skip; // floors switched off in shaft settings
   tower.facilities.set(facility.id, facility);
   tower.nextId = Math.max(tower.nextId, facility.id + 1);
   indexFacility(tower, config, facility);
@@ -76,18 +85,21 @@ function addFacility(tower, config, type, floor, cell, extra = {}) {
 
 function removeFacility(tower, config, facility) {
   tower.facilities.delete(facility.id);
-  unindexFacility(tower, config, facility);
+  unindexFacility(tower, facility);
   tower.version++;
 }
 
 // ---- Saving ----
 
-// Plain-data copy of the tower for saving.
+// Plain-data copy of the tower for saving. Sorted by id (= build order) so a
+// shaft is always restored AFTER the hall it stands inside.
 export function serializeTower(tower) {
   return {
     funds: tower.funds,
     nextId: tower.nextId,
-    facilities: Array.from(tower.facilities.values()).map((f) => ({ ...f })),
+    facilities: Array.from(tower.facilities.values())
+      .sort((a, b) => a.id - b.id)
+      .map((f) => ({ ...f })),
   };
 }
 
@@ -132,8 +144,62 @@ export function isConnected(tower, config, facility) {
   return isFacilityConnected(getReach(tower, config), facility);
 }
 
+// What a facility is worth: its build price, plus any extra elevator cars.
 export function buildCost(config, facility) {
-  return config.facilities[facility.type].cost * facility.height;
+  const extraCars = config.facilities[facility.type].transport === 'elevator' ? shaftCars(config, facility) - 1 : 0;
+  return config.facilities[facility.type].cost * facility.height + Math.max(0, extraCars) * config.elevators.carCost;
+}
+
+export function shaftCars(config, facility) {
+  return facility.cars ?? config.elevators.defaultCars;
+}
+
+// ---- Elevator shaft settings ----
+
+// Buy or sell cars so the shaft has `count` of them (1 .. maxCars).
+export function setShaftCars(tower, config, facility, count) {
+  const ec = config.elevators;
+  const current = shaftCars(config, facility);
+  const target = Math.max(1, Math.min(ec.maxCars, count));
+  if (target === current) return { ok: true, reason: '', change: 0 };
+  if (target > current) {
+    const cost = (target - current) * ec.carCost;
+    if (tower.funds < cost) return { ok: false, reason: 'Not enough funds' };
+    tower.funds -= cost;
+  } else {
+    tower.funds += Math.round((current - target) * ec.carCost * config.economy.demolishRefundRatio);
+  }
+  facility.cars = target;
+  return { ok: true, reason: '', change: target - current };
+}
+
+// Switch one floor on or off as a stop of this shaft. The bottom floor (and a
+// local shaft's top floor) always stop; an express can only stop at halls.
+export function toggleShaftStop(tower, config, facility, floor) {
+  const top = facility.floor + facility.height - 1;
+  const def = config.facilities[facility.type];
+  const forced = floor === facility.floor || (def.stopMode !== 'hubs' && floor === top);
+  if (forced) return { ok: false, reason: 'This floor always stops' };
+  if (!isEligibleStop(tower, config, facility, floor)) return { ok: false, reason: 'Needs a sky lobby here' };
+  // Switching a stop off must not strand anyone who needs it.
+  const reachBefore = getReach(tower, config);
+  const connected = [];
+  for (const f of tower.facilities.values()) if (isFacilityConnected(reachBefore, f)) connected.push(f);
+
+  const skip = new Set(facility.skip ?? []);
+  const wasStopping = effectiveStops(tower, config, facility).includes(floor);
+  if (wasStopping) skip.add(floor);
+  else skip.delete(floor);
+  const before = facility.skip;
+  facility.skip = Array.from(skip).sort((a, b) => a - b);
+  tower.version++;
+  const reachAfter = getReach(tower, config);
+  if (wasStopping && connected.some((f) => !isFacilityConnected(reachAfter, f))) {
+    facility.skip = before; // undo
+    tower.version++;
+    return { ok: false, reason: 'Floors would lose their route' };
+  }
+  return { ok: true, reason: '', stopping: !wasStopping };
 }
 
 export function tallestFloor(tower) {
@@ -171,18 +237,26 @@ export function canPlace(tower, config, typeId, floor, cell, height = 1) {
   if (cell < -half || cell + width > half) {
     return { ok: false, reason: 'Outside your plot' };
   }
+  const isElevator = def.transport === 'elevator';
+  let startsInHall = false; // a shaft that begins inside a hall needs no support of its own
   for (let fl = floor; fl <= top; fl++) {
+    let halls = 0;
+    let taken = 0;
     for (let c = cell; c < cell + width; c++) {
-      if (usesOverlay(config, typeId, fl)) {
-        // Elevator doors on the lobby floor must stand inside the lobby.
-        if (!isOccupied(tower, 0, c)) return { ok: false, reason: 'Must stand in the lobby' };
-        if (tower.overlay.has(cellKey(0, c))) return { ok: false, reason: 'Space is taken' };
+      if (isElevator && hallAt(tower, config, fl, c)) {
+        // Shafts may stand INSIDE a hall (lobby / sky lobby), on top of it.
+        if (tower.overlay.has(cellKey(fl, c))) return { ok: false, reason: 'Space is taken' };
+        halls += 1;
       } else if (isOccupied(tower, fl, c)) {
-        return { ok: false, reason: 'Space is taken' };
+        taken += 1;
       }
     }
+    if (taken) return { ok: false, reason: 'Space is taken' };
+    if (isElevator && halls && halls < width) return { ok: false, reason: 'Does not fit the hall' };
+    if (isElevator && fl === 0 && halls === 0) return { ok: false, reason: 'Must stand in the lobby' };
+    if (fl === floor) startsInHall = halls > 0;
   }
-  if (!isSupported(tower, floor, cell, width)) {
+  if (!startsInHall && !isSupported(tower, floor, cell, width)) {
     return { ok: false, reason: 'Needs floor space below' };
   }
   if (typeId === 'lobby') {

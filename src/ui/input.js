@@ -11,6 +11,7 @@
 //   wantsPlacement()                  -> true while a build/demolish tool is on
 //   onPlaceStart/Move/End(world, pointerType), onPlaceCancel()
 //   onTap(world)                      -> a clean single tap while in pan mode
+//   onLongPress(world)                -> finger held still on one spot in pan mode
 
 export function createInputController(canvas, camera, config, handlers) {
   const cameraConfig = config.camera;
@@ -23,6 +24,12 @@ export function createInputController(canvas, camera, config, handlers) {
   let pinchStartDistance = null;
   let pinchStartZoom = null;
   let sawMultiTouch = false; // true if a 2nd finger touched during this gesture
+  let longPressTimer = null;
+  let longPressFired = false; // a long-press already handled this touch
+  const cancelLongPress = () => {
+    clearTimeout(longPressTimer);
+    longPressTimer = null;
+  };
 
   const clampZoom = (z) => Math.min(cameraConfig.maxZoom, Math.max(cameraConfig.minZoom, z));
 
@@ -62,7 +69,10 @@ export function createInputController(canvas, camera, config, handlers) {
       startY: event.clientY,
       moved: false,
     });
-    if (activePointers.size === 1) sawMultiTouch = false;
+    if (activePointers.size === 1) {
+      sawMultiTouch = false;
+      longPressFired = false;
+    }
 
     if (activePointers.size === 1 && handlers.wantsPlacement()) {
       placingPointerId = event.pointerId;
@@ -70,7 +80,21 @@ export function createInputController(canvas, camera, config, handlers) {
       return;
     }
 
+    // Holding a finger still for a moment (in look mode) asks for details.
+    if (activePointers.size === 1 && handlers.onLongPress) {
+      const id = event.pointerId;
+      cancelLongPress();
+      longPressTimer = setTimeout(() => {
+        const p = activePointers.get(id);
+        if (p && !p.moved && activePointers.size === 1) {
+          longPressFired = true;
+          handlers.onLongPress(screenToWorld(p.x, p.y));
+        }
+      }, cameraConfig.longPressMs);
+    }
+
     if (activePointers.size === 2) {
+      cancelLongPress();
       sawMultiTouch = true;
       cancelPlacement();
       const [a, b] = Array.from(activePointers.values());
@@ -89,6 +113,7 @@ export function createInputController(canvas, camera, config, handlers) {
     pointer.y = event.clientY;
     if (Math.hypot(pointer.x - pointer.startX, pointer.y - pointer.startY) > 10) {
       pointer.moved = true;
+      cancelLongPress();
     }
 
     if (placingPointerId === event.pointerId) {
@@ -122,6 +147,12 @@ export function createInputController(canvas, camera, config, handlers) {
       return;
     }
 
+    cancelLongPress();
+    if (longPressFired) {
+      longPressFired = false; // the hold already did its job: not a tap
+      return;
+    }
+
     // Double-tap to zoom: only in pan mode, only for a clean single-finger tap.
     if (!pointer || pointer.moved || sawMultiTouch || handlers.wantsPlacement()) return;
     if (handlers.onTap) handlers.onTap(screenToWorld(event.clientX, event.clientY));
@@ -139,6 +170,7 @@ export function createInputController(canvas, camera, config, handlers) {
   });
 
   canvas.addEventListener('pointercancel', (event) => {
+    cancelLongPress();
     activePointers.delete(event.pointerId);
     if (activePointers.size < 2) {
       pinchStartDistance = null;

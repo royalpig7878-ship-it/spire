@@ -93,6 +93,7 @@ function onNewDay(game, config) {
     });
     economy.upkeepThisQuarter = 0;
     economy.salesThisQuarter = 0;
+    economy.salesByFacility = {};
     economy.occupancyDays = {};
     game.blocked = true;
   }

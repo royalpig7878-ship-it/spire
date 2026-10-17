@@ -9,12 +9,15 @@ import { drawElevators } from './elevators.js';
 import { drawTenants } from './tenants.js';
 import { drawSky } from './sky.js';
 import { mixToHex } from './color.js';
+import { drawOverlay } from './overlays.js';
 import { isConnected } from '../sim/tower.js';
+import { hourOfDay } from '../sim/clock.js';
 import { formatMoney } from '../data/format.js';
 
-// `hour` is the time of day (0-24) from the game clock. `elevators` is the
-// elevator system state; `alpha` (0-1) smooths motion between sim ticks.
-export function renderWorld(ctx, W, H, camera, config, tower, ui, hour, elevators, alpha, tenants) {
+// `alpha` (0-1) smooths motion between simulation ticks.
+export function renderWorld(ctx, W, H, camera, config, game, ui, alpha) {
+  const { tower, elevators, tenants } = game;
+  const hour = hourOfDay(game.clock);
   const world = config.world;
   const { cellWidth, floorHeight } = config.grid;
   const zoom = camera.zoom;
@@ -89,17 +92,30 @@ export function renderWorld(ctx, W, H, camera, config, tower, ui, hour, elevator
     if (!def.transport && connected) {
       lit = def.capacity ? ((tenants.present.get(f.id) ?? 0) > 0 ? 1 : 0) : 1;
     }
-    const look = { isMain: f.locked, dark: skyState.dark, lit, sky: config.sky, tileIndex: 0 };
+    const shaft = def.transport === 'elevator' ? elevators.shafts.get(f.id) : null;
+    const look = {
+      isMain: f.locked,
+      dark: skyState.dark,
+      lit,
+      sky: config.sky,
+      tileIndex: 0,
+      isStop: true,
+      express: def.stopMode === 'hubs',
+    };
     for (let i = 0; i < f.height; i++) {
       const y = slotY(f.floor + i);
       if (y > H || y + floorPx < 0) continue;
       look.tileIndex = i;
+      look.isStop = shaft ? shaft.stops.has(f.floor + i) : true; // shafts have a door only at stops
       drawFacility(ctx, f.type, def, x, y, w, floorPx, cellPx, detailed, look);
     }
     if (!connected && !def.transport && detailed) {
       drawNoAccessBadge(ctx, x, slotY(f.floor), w, floorPx);
     }
   }
+
+  // --- Diagnostic heat-map layer (tints and labels the buildings) ---
+  if (ui.overlay !== 'off') drawOverlay(ctx, W, H, camera, config, game, ui.overlay);
 
   // --- People walking, climbing, relaxing at their desks ---
   drawTenants(ctx, W, H, camera, config, tenants);
@@ -132,6 +148,38 @@ export function renderWorld(ctx, W, H, camera, config, tower, ui, hour, elevator
     const f = t.facility;
     const label = t.ok ? `Demolish  +${formatMoney(t.refund)}` : t.reason;
     drawVerdict(ctx, world, slotX(f.cell), slotY(f.floor + f.height - 1), f.width * cellPx, floorPx * f.height, t.ok, label, true);
+  }
+
+  // --- The building whose info panel is open: a dashed white outline ---
+  const selected = ui.selectedId !== null ? tower.facilities.get(ui.selectedId) : null;
+  if (selected) {
+    ctx.save();
+    ctx.setLineDash([8, 5]);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#ffffff';
+    ctx.shadowColor = 'rgba(0,0,0,0.6)';
+    ctx.shadowBlur = 4;
+    roundedRectPath(ctx, slotX(selected.cell), slotY(selected.floor + selected.height - 1), selected.width * cellPx, floorPx * selected.height, 6);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // --- Quick tooltip (tap on an elevator stop) ---
+  if (ui.tooltip && performance.now() < ui.tooltip.until) {
+    const tip = ui.tooltip;
+    ctx.font = '600 13px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const lineHeight = 18;
+    const widest = Math.max(...tip.lines.map((l) => ctx.measureText(l).width)) + 20;
+    const tx = Math.max(widest / 2 + 4, Math.min(W - widest / 2 - 4, toScreenX(tip.cell * cellWidth)));
+    const ty = slotY(tip.floor) - 8 - tip.lines.length * lineHeight;
+    ctx.fillStyle = 'rgba(20,28,38,0.92)';
+    roundedRectPath(ctx, tx - widest / 2, ty - 6, widest, tip.lines.length * lineHeight + 12, 10);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    tip.lines.forEach((line, i) => ctx.fillText(line, tx, ty + 6 + i * lineHeight));
+    ctx.textAlign = 'start';
   }
 }
 

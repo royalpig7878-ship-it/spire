@@ -54,7 +54,7 @@ export function drawElevators(ctx, W, H, camera, config, system, alpha) {
 
     // --- Call button plates (lit arrow = somebody pressed it) ---
     if (detailed) {
-      for (let fl = shaft.bottom; fl <= shaft.top; fl++) {
+      for (const fl of shaft.stopList) {
         const y = slotY(fl);
         if (y > H || y + floorPx < 0) continue;
         const px = x + w - cellPx * 0.17;
@@ -66,8 +66,8 @@ export function drawElevators(ctx, W, H, camera, config, system, alpha) {
         const s = pw * 0.32;
         const upLit = shaft.calls.has(`${fl}:1`);
         const downLit = shaft.calls.has(`${fl}:-1`);
-        if (fl < shaft.top) drawArrow(ctx, px, py - floorPx * 0.08, s, 1, upLit ? '#ffd166' : '#6d7b88');
-        if (fl > shaft.bottom) drawArrow(ctx, px, py + floorPx * 0.08, s, -1, downLit ? '#ffd166' : '#6d7b88');
+        if (fl < shaft.stopList[shaft.stopList.length - 1]) drawArrow(ctx, px, py - floorPx * 0.08, s, 1, upLit ? '#ffd166' : '#6d7b88');
+        if (fl > shaft.stopList[0]) drawArrow(ctx, px, py + floorPx * 0.08, s, -1, downLit ? '#ffd166' : '#6d7b88');
       }
     }
 
@@ -87,6 +87,24 @@ export function drawElevators(ctx, W, H, camera, config, system, alpha) {
         ctx.font = `700 ${Math.max(9, figSize * 0.4)}px system-ui, sans-serif`;
         ctx.textBaseline = 'middle';
         ctx.fillText(`+${queue.length - shown}`, x - cellPx * 0.2 - shown * figSize * 0.42 - figSize * 0.5, baseY - figSize * 0.3);
+      }
+      // Queue indicator: a label with the line length and the longest wait,
+      // shown once a line is long or someone has been waiting a while.
+      const longest = queue.reduce((max, r) => Math.max(max, r.waited), 0);
+      if (zoom >= 0.45 && (queue.length >= 4 || longest >= ec.impatientAfterSec)) {
+        const text = `${queue.length} in line · ${Math.round(longest)}s`;
+        ctx.font = '700 11px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const tw = ctx.measureText(text).width + 12;
+        const bx = x - cellPx * 0.2 - Math.min(shown, 3) * figSize * 0.21;
+        const by = baseY - figSize * 1.28;
+        ctx.fillStyle = longest >= ec.stressedAfterSec ? '#a8302b' : 'rgba(20,28,38,0.88)';
+        roundedRectPath(ctx, bx - tw / 2, by - 9, tw, 18, 9);
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(text, bx, by);
+        ctx.textAlign = 'start';
       }
     }
 

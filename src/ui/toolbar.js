@@ -32,6 +32,10 @@ export function createToolbar(root, config, callbacks) {
       <div class="items" id="items"></div>
     </div>`,
   );
+  // Other floating UI (toasts, the legend) sits just above the toolbar, which
+  // changes height, so publish its height as a CSS variable.
+  const toolbarEl = root.querySelector('.toolbar');
+  new ResizeObserver(() => root.style.setProperty('--toolbar-h', `${toolbarEl.offsetHeight}px`)).observe(toolbarEl);
   const toastEl = root.querySelector('#toast');
   const hintEl = root.querySelector('#hint');
   const tabsEl = root.querySelector('#tabs');
@@ -106,7 +110,7 @@ export function createToolbar(root, config, callbacks) {
     } else if (tool.kind === 'demolish') {
       hintEl.textContent = 'Drag onto a building and let go to demolish it (partial refund).';
     } else {
-      hintEl.textContent = 'Drag to pan, pinch to zoom. Tap an elevator shaft to send a rider.';
+      hintEl.textContent = 'Drag to pan, pinch to zoom. Tap an elevator stop for its line; hold on any building for details.';
     }
   }
 

@@ -21,6 +21,7 @@
 // Positions are in cell units (1 = one grid cell, can be fractional).
 
 import { getReach } from './tower.js';
+import { effectiveStops } from './shafts.js';
 import { queueLength } from './elevators.js';
 
 // The static part of the graph only changes when the tower changes.
@@ -53,7 +54,8 @@ function getGraph(game, config) {
       // stairs on floors b..t join floors b-1 .. t
       for (let fl = f.floor - 1; fl < f.floor + f.height; fl++) addNode(t, fl);
     } else {
-      for (let fl = f.floor; fl < f.floor + f.height; fl++) addNode(t, fl);
+      // an elevator only has a door at the floors it stops at
+      for (const fl of effectiveStops(tower, config, f)) addNode(t, fl);
     }
   }
   tower._routeGraph = { version: tower.version, nodes, byFloor, byTransport, lookup, reach };
@@ -157,11 +159,15 @@ export function planRoute(game, config, from, to) {
       }
     } else {
       const line = queueLength(game, n.tid, n.floor);
-      const wait = rt.elevatorBaseWaitSec + rt.elevatorPerWaiterSec * line;
+      // More cars (and faster ones) mean shorter waits, so tenants favor them.
+      const shaft = game.elevators.shafts.get(n.tid);
+      const carFactor = shaft ? (1 / Math.sqrt(shaft.cars.length || 1)) * (1 / shaft.speedMult) ** 0.5 : 1;
+      const wait = (rt.elevatorBaseWaitSec + rt.elevatorPerWaiterSec * line) * carFactor;
       for (const j of byTransport.get(n.tid)) {
         // every other stop of this shaft
         if (j === i) continue;
-        relax(j, d + wait + rt.elevatorRideSecPerFloor * Math.abs(nodes[j].floor - n.floor), i);
+        const ride = (rt.elevatorRideSecPerFloor * Math.abs(nodes[j].floor - n.floor)) / (shaft ? shaft.speedMult : 1);
+        relax(j, d + wait + ride, i);
       }
     }
   }

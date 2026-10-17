@@ -37,6 +37,7 @@ export const config = {
     doubleTapMaxDelayMs: 300,
     doubleTapMaxDistancePx: 40,
     doubleTapZoomFactor: 1.6,
+    longPressMs: 450, // hold a finger still this long to open an info panel
     wheelZoomFactor: 1.1, // desktop mouse wheel
     // How far past the plot edges the camera may wander (world pixels).
     panMarginPx: 300,
@@ -102,6 +103,7 @@ export const config = {
       cost: 2000,
       minFloor: 0,
       maxFloor: 0,
+      hall: true, // a hall: elevators may stand inside it and stop at it
       rentPerCell: 0,
       upkeepPerCell: 3,
       color: '#cdbfa6',
@@ -163,7 +165,8 @@ export const config = {
       color: '#a79b86',
       accent: '#6f6455',
     },
-    // An elevator shaft joins every floor it spans (it may start in the lobby).
+    // An elevator shaft joins every floor it stops at (it may start in the lobby).
+    // stopMode 'all' = stops everywhere (you can switch floors off in its settings).
     elevator: {
       name: 'Local elevator',
       category: 'transport',
@@ -172,17 +175,53 @@ export const config = {
       minFloor: 0,
       vertical: true,
       transport: 'elevator',
+      stopMode: 'all',
       rentPerCell: 0,
       upkeepPerCell: 5,
       color: '#66788a',
       accent: '#e8d9a8',
+    },
+    // Express: faster, bigger cars, but it only stops at its bottom floor and at
+    // "halls" (the lobby and sky lobbies) that it passes through or touches.
+    elevatorExpress: {
+      name: 'Express elevator',
+      category: 'transport',
+      width: 2,
+      cost: 2800,
+      minFloor: 0,
+      vertical: true,
+      transport: 'elevator',
+      stopMode: 'hubs',
+      carSpeedMult: 1.9,
+      carCapacityBonus: 2,
+      rentPerCell: 0,
+      upkeepPerCell: 7,
+      color: '#3d5a80',
+      accent: '#f2c46d',
+    },
+    // A transfer floor: a wide hall where elevators can stop and people change
+    // between express and local shafts. Elevators can run right through it.
+    skylobby: {
+      name: 'Sky lobby',
+      category: 'transport',
+      width: 8,
+      cost: 7000,
+      minFloor: 3,
+      hall: true,
+      rentPerCell: 0,
+      upkeepPerCell: 3,
+      color: '#8fbfb5',
+      accent: '#e9f4ef',
     },
   },
 
   // --- Elevators ---
   // Times are in "sim seconds": real seconds at 1x speed (2x/4x run faster).
   elevators: {
-    defaultCars: 2, // cars per shaft (the shaft settings screen comes in M5)
+    defaultCars: 1, // a new shaft comes with one car; add more in its settings
+    maxCars: 6, // most cars one shaft can hold
+    carCost: 2500, // price of each extra car
+    carUpkeepPerDay: 10, // every car costs this to run, per day
     car: {
       capacity: 8, // riders per car
       speedFloorsPerSec: 3.6, // travel speed
@@ -272,6 +311,18 @@ export const config = {
 
     // Moving out hurts the tower's reputation (rating tiers in M7 will use it).
     reputation: { start: 50, perMoveOut: -1.5, perGoodDay: 0.4, goodMoodAbove: 70 },
+  },
+
+  // --- Diagnostic overlays (the heat-map layers) ---
+  // Each ramp goes from "low" to "high" using lightness AND hue, plus every
+  // tile shows its number, so nothing depends on color alone.
+  overlays: {
+    waitMaxSec: 40, // an elevator stop averaging this wait is "maximum" red
+    ramps: {
+      bad: ['#fff1b8', '#f7b267', '#e0603c', '#8e1d4c'], // stress, wait: high is bad
+      good: ['#e4f1f3', '#8fd0d6', '#3a9fb0', '#0d5a73'], // occupancy: high is good
+      money: ['#f4f1d0', '#c4de8a', '#74b36b', '#1f6e43'], // income
+    },
   },
 
   // --- Sky colors through the day ---

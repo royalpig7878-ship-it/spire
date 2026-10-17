@@ -76,6 +76,16 @@ milestone, once you've confirmed it works — never before.
 
 ## Milestone log
 
+- **M5 — Diagnostics**: the **Layer** button cycles heat-map overlays
+  (Stress, Wait, Occupancy, Income). Every tile shows its number, and a
+  legend explains the colors. **Tap** an elevator stop to see its line and
+  wait times; **hold a finger** on any building for its info panel. An
+  elevator's panel lets you buy or sell cars and switch floors on or off.
+  New buildings: **Express elevator** (fast, stops only at the lobby and
+  sky lobbies) and **Sky lobby** (a transfer hall; shafts can start or run
+  through it). Shaft prices, car costs and overlay colors are in
+  `config.js`.
+
 - **M4 — Tenants**: offices and apartments fill with people who move in
   hour by hour, follow daily routines (workers 8-5 with lunch, residents
   out by day and home at night), and plan routes (stairs for 1-2 floors,

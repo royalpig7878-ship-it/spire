@@ -176,14 +176,62 @@ export function drawFacility(ctx, typeId, def, x, y, w, h, cellPx, detailed, loo
     ctx.moveTo(mx(left), base - h * 0.2);
     ctx.lineTo(mx(right), topY - h * 0.04);
     ctx.stroke();
-  } else if (typeId === 'elevator') {
-    // Dark shaft opening with a frame; the car is drawn separately on top.
-    ctx.fillStyle = shade(color, 0.55);
-    roundedRectPath(ctx, x + w * 0.12, y + h * 0.06, w * 0.76, h * 0.9, h * 0.06);
+  } else if (def.transport === 'elevator') {
+    if (look.isStop === false) {
+      // No door on this floor: the shaft is just a wall here.
+      ctx.fillStyle = shade(color, 0.12);
+      roundedRectPath(ctx, x + w * 0.12, y + h * 0.06, w * 0.76, h * 0.9, h * 0.06);
+      ctx.fill();
+      ctx.strokeStyle = shade(color, 0.3);
+      ctx.lineWidth = Math.max(1, h * 0.04);
+      ctx.beginPath();
+      ctx.moveTo(x + w * 0.18, y + h * 0.5);
+      ctx.lineTo(x + w * 0.82, y + h * 0.5);
+      ctx.stroke();
+    } else {
+      // Dark shaft opening with a frame; the car is drawn separately on top.
+      ctx.fillStyle = shade(color, 0.55);
+      roundedRectPath(ctx, x + w * 0.12, y + h * 0.06, w * 0.76, h * 0.9, h * 0.06);
+      ctx.fill();
+      ctx.strokeStyle = shade(color, 0.2);
+      ctx.lineWidth = Math.max(1, h * 0.05);
+      ctx.stroke();
+      if (look.express) {
+        // Express shafts carry a double chevron so you can tell them apart.
+        ctx.strokeStyle = accent;
+        ctx.lineWidth = Math.max(1.2, h * 0.05);
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        for (const dy of [0.2, 0.3]) {
+          ctx.beginPath();
+          ctx.moveTo(x + w * 0.42, y + h * (dy + 0.07));
+          ctx.lineTo(x + w * 0.5, y + h * dy);
+          ctx.lineTo(x + w * 0.58, y + h * (dy + 0.07));
+          ctx.stroke();
+        }
+      }
+    }
+  } else if (typeId === 'skylobby') {
+    ctx.fillStyle = shade(color, 0.25); // base strip
+    ctx.fillRect(x, y + h * 0.88, w, h * 0.12);
+    for (let i = 0; i < cells; i++) {
+      ctx.fillStyle = accent; // tall glass panes
+      roundedRectPath(ctx, x + i * cellPx + cellPx * 0.12, y + h * 0.14, cellPx * 0.76, h * 0.7, h * 0.05);
+      ctx.fill();
+      if (i % 2 === 1) {
+        // a potted plant in front of every second pane
+        const px = x + i * cellPx + cellPx * 0.5;
+        ctx.fillStyle = '#9a6b43';
+        ctx.fillRect(px - cellPx * 0.1, y + h * 0.66, cellPx * 0.2, h * 0.18);
+        ctx.fillStyle = '#4f9d69';
+        ctx.beginPath();
+        ctx.arc(px, y + h * 0.58, cellPx * 0.17, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.fillStyle = shade(color, 0.45); // sign over the middle
+    roundedRectPath(ctx, x + w / 2 - cellPx * 0.9, y + h * 0.04, cellPx * 1.8, h * 0.12, h * 0.05);
     ctx.fill();
-    ctx.strokeStyle = shade(color, 0.2);
-    ctx.lineWidth = Math.max(1, h * 0.05);
-    ctx.stroke();
   } else if (typeId === 'lobby') {
     ctx.fillStyle = dark; // base strip
     ctx.fillRect(x, y + h * 0.88, w, h * 0.12);

@@ -5,9 +5,12 @@
 // then only the text that changed is touched each frame.
 
 import { formatMoney } from '../data/format.js';
+import { OVERLAY_INFO } from '../render/overlays.js';
 
 const PAUSE_ICON =
   '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
+const LAYERS_ICON =
+  '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"><path d="M12 3 3 8l9 5 9-5-9-5zM3 13l9 5 9-5"/></svg>';
 const MENU_ICON =
   '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>';
 
@@ -26,9 +29,16 @@ export function createHud(root, config, callbacks) {
     <div class="hud hud3">
       <div class="pill small" id="hud-height"></div>
       <div class="pill small" id="hud-mood"></div>
+      <button class="pill small overlay-btn" id="hud-overlay" type="button">${LAYERS_ICON}<span id="hud-overlay-label">Layer: Off</span></button>
     </div>
+    <div class="legend" id="hud-legend"></div>
     <div class="debt-banner" id="hud-debt"></div>`,
   );
+  const overlayBtn = root.querySelector('#hud-overlay');
+  const overlayLabel = root.querySelector('#hud-overlay-label');
+  const legendEl = root.querySelector('#hud-legend');
+  overlayBtn.addEventListener('click', callbacks.onOverlay);
+  let legendKey = '';
   const fundsEl = root.querySelector('#hud-funds');
   const popEl = root.querySelector('#hud-pop');
   const moodEl = root.querySelector('#hud-mood');
@@ -64,6 +74,22 @@ export function createHud(root, config, callbacks) {
       // Low mood gets a "!" badge as well as red text (never color alone).
       setText(moodEl, `Mood ${state.mood}%`);
       moodEl.classList.toggle('low', state.mood < 50);
+
+      // Overlay button + color legend
+      const info = OVERLAY_INFO[state.overlay];
+      setText(overlayLabel, info ? info.label : 'Layers');
+      overlayBtn.classList.toggle('active', Boolean(info));
+      const key = state.overlay;
+      if (key !== legendKey) {
+        legendKey = key;
+        if (info) {
+          const stops = config.overlays.ramps[info.ramp];
+          legendEl.innerHTML = `<span>${info.label}: ${info.low}</span><div class="ramp" style="background:linear-gradient(90deg,${stops.join(',')})"></div><span>${info.high}</span>`;
+          legendEl.classList.add('show');
+        } else {
+          legendEl.classList.remove('show');
+        }
+      }
       setText(clockEl, `${state.dateText}  ${state.timeText}`);
       for (const [speed, b] of speedButtons) {
         const active = speed === state.speed;

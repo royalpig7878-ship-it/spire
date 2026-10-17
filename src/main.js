@@ -7,15 +7,27 @@
 import { config } from '../config.js';
 import { createGameLoop } from './sim/loop.js';
 import { createGame, updateGame, fireSaleOffers, fireSaleSell, fireSaleDecline } from './sim/game.js';
-import { canPlace, place, canDemolish, demolish, facilityAt, refundFor, tallestFloor } from './sim/tower.js';
-import { requestRide } from './sim/elevators.js';
-import { calendar, hourOfDay, formatTime } from './sim/clock.js';
+import {
+  canPlace,
+  place,
+  canDemolish,
+  demolish,
+  facilityAt,
+  refundFor,
+  tallestFloor,
+  setShaftCars,
+  toggleShaftStop,
+} from './sim/tower.js';
+import { stopWaitSeconds } from './sim/diagnostics.js';
+import { calendar, formatTime } from './sim/clock.js';
 import { saveGame, loadGame, hasSave } from './sim/save.js';
 import { createInputController } from './ui/input.js';
 import { createToolbar } from './ui/toolbar.js';
 import { createHud } from './ui/hud.js';
 import { createModals } from './ui/modals.js';
+import { createInfoPanel } from './ui/infopanel.js';
 import { renderWorld } from './render/world.js';
+import { OVERLAY_MODES } from './render/overlays.js';
 import { formatMoney } from './data/format.js';
 
 const canvas = document.getElementById('game-canvas');
@@ -38,6 +50,9 @@ const ui = {
   tool: { kind: 'pan', typeId: null }, // 'pan' | 'build' | 'demolish'
   ghost: null, // { typeId, floor, cell, ok, reason } while dragging a build
   demolishTarget: null, // { facility, ok, reason, refund } while dragging demolish
+  overlay: 'off', // diagnostic heat-map layer: off | stress | wait | occupancy | income
+  selectedId: null, // facility whose info panel is open
+  tooltip: null, // { lines, floor, cell, until } quick note after tapping an elevator stop
 };
 
 const toolbar = createToolbar(uiRoot, config, {
@@ -52,9 +67,29 @@ const toolbar = createToolbar(uiRoot, config, {
   },
 });
 const modals = createModals(uiRoot);
+const infoPanel = createInfoPanel(uiRoot, config, {
+  getGame: () => game,
+  onClose() {
+    ui.selectedId = null;
+  },
+  onSetCars(facility, count) {
+    const result = setShaftCars(game.tower, config, facility, count);
+    if (!result.ok) toolbar.toast(result.reason);
+    else if (result.change > 0) toolbar.toast(`Car added  -${formatMoney(config.elevators.carCost)}`);
+    else if (result.change < 0) toolbar.toast('Car removed');
+  },
+  onToggleStop(facility, floor) {
+    const result = toggleShaftStop(game.tower, config, facility, floor);
+    if (!result.ok) toolbar.toast(result.reason);
+  },
+});
 const hud = createHud(uiRoot, config, {
   onSpeed(speed) {
     game.speed = speed;
+  },
+  onOverlay() {
+    const next = (OVERLAY_MODES.indexOf(ui.overlay) + 1) % OVERLAY_MODES.length;
+    ui.overlay = OVERLAY_MODES[next];
   },
   onMenu() {
     modals.showMenu({
@@ -172,23 +207,43 @@ function clearPreview() {
   dragAnchor = null;
 }
 
-// Tap an elevator shaft (in pan mode) to send a test rider from that floor.
-function onTap(world) {
+function facilityUnder(world) {
   const { cellWidth, floorHeight } = config.grid;
   const floor = Math.floor(-world.y / floorHeight);
-  const target = facilityAt(game.tower, floor, Math.floor(world.x / cellWidth));
-  if (!target || config.facilities[target.type].transport !== 'elevator') return;
-  const bottom = target.floor;
-  const top = target.floor + target.height - 1;
-  if (top === bottom) return;
-  const others = [];
-  for (let fl = bottom; fl <= top; fl++) if (fl !== floor) others.push(fl);
-  // From the bottom: go up somewhere. From above: usually head back down.
-  const dest =
-    floor === bottom || Math.random() > 0.65
-      ? others[Math.floor(Math.random() * others.length)]
-      : bottom;
-  if (!requestRide(game, config, floor, dest)) toolbar.toast('The line is full');
+  return { floor, cell: Math.floor(world.x / cellWidth), facility: facilityAt(game.tower, floor, Math.floor(world.x / cellWidth)) };
+}
+
+// Tap an elevator stop: a quick note with the line length and wait times.
+function onTap(world) {
+  const { floor, cell, facility } = facilityUnder(world);
+  ui.tooltip = null;
+  if (!facility || config.facilities[facility.type].transport !== 'elevator') return;
+  const shaft = game.elevators.shafts.get(facility.id);
+  if (!shaft || !shaft.stops.has(floor)) {
+    ui.tooltip = { lines: ['No door on this floor'], floor, cell, until: performance.now() + 2500 };
+    return;
+  }
+  const queue = shaft.waiting.get(floor) ?? [];
+  const longest = queue.reduce((max, r) => Math.max(max, r.waited), 0);
+  ui.tooltip = {
+    lines: [
+      `${config.facilities[facility.type].name} · floor ${floor}`,
+      `${queue.length} in line · longest ${Math.round(longest)}s`,
+      `Recent average wait ${Math.round(stopWaitSeconds(shaft, floor))}s`,
+    ],
+    floor,
+    cell,
+    until: performance.now() + 4500,
+  };
+}
+
+// Hold a finger on a building: open its info panel.
+function onLongPress(world) {
+  const { facility } = facilityUnder(world);
+  if (!facility) return;
+  ui.selectedId = facility.id;
+  ui.tooltip = null;
+  infoPanel.show(facility.id);
 }
 
 const placementHandlers = {
@@ -196,6 +251,7 @@ const placementHandlers = {
   onPlaceStart: (world, pointerType) => updatePreview(world, pointerType, true),
   onPlaceMove: (world, pointerType) => updatePreview(world, pointerType, false),
   onTap,
+  onLongPress,
   onPlaceEnd(world, pointerType) {
     updatePreview(world, pointerType, false);
     const tower = game.tower;
@@ -274,26 +330,16 @@ const loop = createGameLoop({
       dateText: `Y${cal.year} Q${cal.quarter} D${cal.dayOfQuarter}`,
       timeText: formatTime(game.clock),
       speed: game.speed,
+      overlay: ui.overlay,
       debtDaysLeft: Math.max(0, config.economy.debtGraceDays - game.economy.debtDays),
     });
     toolbar.update(game.tower.funds);
-    renderWorld(
-      ctx,
-      canvasWidthCss,
-      canvasHeightCss,
-      camera,
-      config,
-      game.tower,
-      ui,
-      hourOfDay(game.clock),
-      game.elevators,
-      smooth,
-      game.tenants,
-    );
+    infoPanel.refresh();
+    renderWorld(ctx, canvasWidthCss, canvasHeightCss, camera, config, game, ui, smooth);
   },
 });
 
 // Handy for testing in the browser console: window.spire.game
-window.spire = { game, config, camera };
+window.spire = { game, config, camera, ui, infoPanel };
 
 loop.start();

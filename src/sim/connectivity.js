@@ -12,11 +12,23 @@
 //
 // Pure calculation on the tower's data: nothing here draws or moves anything.
 
+import { effectiveStops } from './shafts.js';
+
 export function computeReach(tower, config) {
-  // 1. Which cells are occupied on each floor?
+  // 1. Which cells are walkable on each floor? An elevator shaft is a wall on
+  // floors where it has no door (it does not stop there), so people cannot
+  // walk through it.
   const cellsByFloor = new Map(); // floor -> Set(cell)
+  const stopsOf = new Map(); // shaft id -> its stop floors
   for (const f of tower.facilities.values()) {
+    const isElevator = config.facilities[f.type].transport === 'elevator';
+    let stops = null;
+    if (isElevator) {
+      stops = effectiveStops(tower, config, f);
+      stopsOf.set(f.id, stops);
+    }
     for (let fl = f.floor; fl < f.floor + f.height; fl++) {
+      if (stops && !stops.includes(fl)) continue;
       let set = cellsByFloor.get(fl);
       if (!set) cellsByFloor.set(fl, (set = new Set()));
       for (let c = f.cell; c < f.cell + f.width; c++) set.add(c);
@@ -56,7 +68,8 @@ export function computeReach(tower, config) {
     if (kind === 'stairs') {
       for (let fl = f.floor; fl < f.floor + f.height; fl++) union(run(fl - 1, f.cell), run(fl, f.cell));
     } else if (kind === 'elevator') {
-      for (let fl = f.floor + 1; fl < f.floor + f.height; fl++) union(run(f.floor, f.cell), run(fl, f.cell));
+      const stops = stopsOf.get(f.id);
+      for (const fl of stops) union(run(stops[0], f.cell), run(fl, f.cell));
     }
   }
 

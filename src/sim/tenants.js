@@ -255,6 +255,7 @@ function finishTrip(game, config, t) {
       // Customer pays; a cafe visit also calms the tenant down.
       game.tower.funds += def.visitRevenue;
       game.economy.salesThisQuarter += def.visitRevenue;
+      game.economy.salesByFacility[cafe.id] = (game.economy.salesByFacility[cafe.id] ?? 0) + def.visitRevenue;
       const relief = config.tenants.stress.cafeRelief * config.tenants.traits[t.trait].reliefMult;
       t.stress = Math.max(0, t.stress - relief);
       t.maxedSec = 0;
@@ -311,6 +312,11 @@ function stepTravel(game, config, t, dt) {
     }
     t.pos.floor = leg.fromFloor;
     t.pos.x = leg.x;
+    // The shaft's settings changed since this trip was planned: plan again.
+    const planned = game.elevators.shafts.get(leg.shaftId);
+    if (!t.rider && planned && (!planned.stops.has(leg.fromFloor) || !planned.stops.has(leg.toFloor))) {
+      return replan(game, config, t);
+    }
     if (!t.rider) {
       t.rideRetry -= dt;
       if (t.rideRetry <= 0) {
@@ -326,7 +332,7 @@ function stepTravel(game, config, t, dt) {
       standing = false;
       const shaft = game.elevators.shafts.get(t.rider.shaftId);
       const car = shaft?.cars.find((c) => c.riders.includes(t.rider));
-      const fullness = car ? car.riders.length / config.elevators.car.capacity : 0.5;
+      const fullness = car ? car.riders.length / shaft.capacity : 0.5;
       addStress(config, t, sc.ridePerSec * fullness * dt);
       if (car) t.pos.floor = car.pos; // so the tenant "is" where the car is
     } else if (t.rider.state === 'done') {

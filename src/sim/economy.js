@@ -4,12 +4,13 @@
 // earns each quarter (rent). Pure calculations — no drawing, no timing.
 // All the numbers come from config.js.
 
-import { tallestFloor, isConnected } from './tower.js';
+import { tallestFloor, isConnected, shaftCars } from './tower.js';
 
 export function createEconomy() {
   return {
     upkeepThisQuarter: 0, // running total, shown on the quarterly report
     salesThisQuarter: 0, // money customers spent this quarter (already in funds)
+    salesByFacility: {}, // facility id -> sales this quarter (for the income overlay)
     occupancyDays: {}, // facility id -> days of "fully occupied" earned this quarter
     debtDays: 0, // consecutive days spent below $0
   };
@@ -20,7 +21,9 @@ export function createEconomy() {
 export function dailyUpkeep(tower, config) {
   let base = 0;
   for (const f of tower.facilities.values()) {
-    base += f.width * f.height * config.facilities[f.type].upkeepPerCell;
+    const def = config.facilities[f.type];
+    base += f.width * f.height * def.upkeepPerCell;
+    if (def.transport === 'elevator') base += shaftCars(config, f) * config.elevators.carUpkeepPerDay;
   }
   const sizeFactor = 1 + config.economy.sizeUpkeepPerFloor * tallestFloor(tower);
   return Math.round(base * sizeFactor);

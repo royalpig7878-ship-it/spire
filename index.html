@@ -137,6 +137,85 @@
     }
     .debt-banner.show { display: block; }
 
+    /* ---- Overlay button + legend ---- */
+    .overlay-btn {
+      margin-left: auto;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 40px;
+      padding: 0 14px;
+      border: 2px solid transparent;
+    }
+    .overlay-btn.active { border-color: var(--accent); color: var(--accent); }
+    .hud3 { align-items: center; }
+    .legend {
+      position: absolute;
+      left: 8px;
+      right: 8px;
+      bottom: calc(var(--toolbar-h, 200px) + 8px);
+      display: none;
+      align-items: center;
+      gap: 8px;
+      background: rgba(29, 39, 51, 0.92);
+      border-radius: 18px;
+      padding: 6px 12px;
+      font-size: calc(12px * var(--text-scale));
+      pointer-events: none;
+    }
+    .legend.show { display: flex; }
+    .sheet:not([hidden]) ~ .legend { display: none; }
+    .legend .ramp { flex: 1; height: 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.4); }
+    .legend span { white-space: nowrap; }
+
+    /* ---- Info sheet (long-press a building) ---- */
+    .sheet {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      max-height: 64vh;
+      overflow-y: auto;
+      background: var(--bar-bg);
+      border-top: 1px solid var(--bar-border);
+      border-radius: 20px 20px 0 0;
+      padding: 12px 16px calc(14px + env(safe-area-inset-bottom));
+      box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.35);
+      pointer-events: auto;
+      touch-action: pan-y;
+    }
+    .sheet[hidden] { display: none; }
+    .sheet-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+    .sheet-head h3 { margin: 0; font-size: calc(18px * var(--text-scale)); display: inline; }
+    .tag { margin-left: 8px; color: #9fb0c0; font-weight: 500; }
+    .close { width: 44px; height: 44px; border-radius: 22px; background: var(--chip-bg); font-size: 24px; line-height: 1; padding: 0; }
+    .kv { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; font-weight: 500; }
+    .kv span:first-child { color: #b8c4d0; }
+    .warn { color: #ffb4a8; }
+    .note { margin: 0 0 8px; color: #b8c4d0; font-weight: 500; line-height: 1.35; font-size: calc(13px * var(--text-scale)); }
+    .section-label { margin: 12px 0 6px; font-size: calc(12px * var(--text-scale)); color: #9fb0c0; text-transform: uppercase; letter-spacing: 0.04em; }
+    .tenant-row { display: grid; grid-template-columns: 14px 86px 1fr 28px; align-items: center; gap: 8px; padding: 3px 0; font-weight: 500; font-size: calc(13px * var(--text-scale)); }
+    .tenant-row .dot { width: 12px; height: 12px; border-radius: 50%; }
+    .tenant-row .bar { height: 8px; border-radius: 4px; background: #2b3a4a; overflow: hidden; }
+    .tenant-row .bar span { display: block; height: 100%; background: linear-gradient(90deg, #f7b267, #8e1d4c); }
+    .tenant-row .num { text-align: right; }
+    .stepper { display: flex; align-items: center; gap: 10px; }
+    .step { width: 52px; height: 48px; border-radius: 14px; background: var(--chip-bg); font-size: 26px; padding: 0; }
+    .step:disabled { opacity: 0.4; }
+    .step-value { flex: 1; text-align: center; display: flex; flex-direction: column; }
+    .step-value small { color: #9fb0c0; font-weight: 500; }
+    .car-list { margin-top: 6px; }
+    .car-row { color: #b8c4d0; font-weight: 500; font-size: calc(12px * var(--text-scale)); padding: 2px 0; }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip { min-width: 52px; min-height: 48px; border-radius: 12px; background: var(--chip-bg); display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.1; padding: 2px 6px; }
+    .chip small { font-size: 10px; font-weight: 500; color: #b8c4d0; }
+    .chip.on { border-color: var(--accent); }
+    .chip.off { background: transparent; border: 2px dashed #5b6b7b; color: #9fb0c0; }
+    .chip.off b { text-decoration: line-through; }
+    .chip.locked { opacity: 0.45; border-style: dotted; }
+    .chip.forced { opacity: 0.8; }
+    .chip:disabled { cursor: default; }
+
     /* ---- Pop-up cards ---- */
     .modal-backdrop {
       position: absolute;
@@ -209,7 +288,7 @@
     .toast {
       position: absolute;
       left: 50%;
-      bottom: calc(200px + env(safe-area-inset-bottom));
+      bottom: calc(var(--toolbar-h, 200px) + 12px);
       transform: translateX(-50%);
       background: rgba(20, 28, 38, 0.95);
       border-radius: 20px;
