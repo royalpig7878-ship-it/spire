@@ -5,9 +5,12 @@
 // changes them. (Simulation stays in src/sim.)
 
 import { drawFacility, roundedRectPath } from './facilities.js';
+import { drawSky } from './sky.js';
+import { mixToHex } from './color.js';
 import { formatMoney } from '../data/format.js';
 
-export function renderWorld(ctx, W, H, camera, config, tower, ui) {
+// `hour` is the time of day (0-24) from the game clock.
+export function renderWorld(ctx, W, H, camera, config, tower, ui, hour) {
   const world = config.world;
   const { cellWidth, floorHeight } = config.grid;
   const zoom = camera.zoom;
@@ -21,19 +24,16 @@ export function renderWorld(ctx, W, H, camera, config, tower, ui) {
   const cellPx = cellWidth * zoom;
   const floorPx = floorHeight * zoom;
 
-  // --- Sky ---
-  const sky = ctx.createLinearGradient(0, 0, 0, H);
-  sky.addColorStop(0, world.skyColors.top);
-  sky.addColorStop(1, world.skyColors.bottom);
-  ctx.fillStyle = sky;
-  ctx.fillRect(0, 0, W, H);
+  // --- Sky (follows the game clock) ---
+  const skyState = drawSky(ctx, W, H, hour, config);
+  const nightDim = Math.min(1, skyState.dark * config.sky.nightDimStrength);
 
-  // --- Ground ---
+  // --- Ground (dims at night like the buildings) ---
   const groundY = toScreenY(world.groundY);
   if (groundY < H) {
-    ctx.fillStyle = world.groundColor;
+    ctx.fillStyle = mixToHex(world.groundColor, config.sky.nightTint, nightDim);
     ctx.fillRect(0, groundY, W, H - groundY);
-    ctx.fillStyle = world.grassColor;
+    ctx.fillStyle = mixToHex(world.grassColor, config.sky.nightTint, nightDim);
     ctx.fillRect(0, groundY, W, world.grassHeight * zoom);
   }
 
@@ -77,7 +77,8 @@ export function renderWorld(ctx, W, H, camera, config, tower, ui) {
     const y = slotY(f.floor);
     const w = f.width * cellPx;
     if (x > W || x + w < 0 || y > H || y + floorPx < 0) continue;
-    drawFacility(ctx, f.type, config.facilities[f.type], x, y, w, floorPx, cellPx, detailed, f.locked);
+    const look = { isMain: f.locked, dark: skyState.dark, lit: f.occupied ? 1 : 0, sky: config.sky };
+    drawFacility(ctx, f.type, config.facilities[f.type], x, y, w, floorPx, cellPx, detailed, look);
   }
 
   // --- Ghost (build preview) ---
@@ -89,7 +90,8 @@ export function renderWorld(ctx, W, H, camera, config, tower, ui) {
     const w = def.width * cellPx;
     ctx.save();
     ctx.globalAlpha = 0.7;
-    drawFacility(ctx, g.typeId, def, x, y, w, floorPx, cellPx, detailed, false);
+    const ghostLook = { isMain: false, dark: skyState.dark, lit: 0, sky: config.sky };
+    drawFacility(ctx, g.typeId, def, x, y, w, floorPx, cellPx, detailed, ghostLook);
     ctx.restore();
     drawVerdict(ctx, world, x, y, w, floorPx, g.ok, g.ok ? formatMoney(def.cost) : g.reason);
   }

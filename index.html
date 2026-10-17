@@ -65,6 +65,129 @@
       font-size: calc(16px * var(--text-scale));
     }
     #hud-funds { color: var(--accent); }
+    /* In debt: red AND a "!" badge, so it never relies on color alone. */
+    #hud-funds.debt { color: #ff8a8a; }
+    #hud-funds.debt::before {
+      content: '!';
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      line-height: 20px;
+      margin-right: 6px;
+      border-radius: 50%;
+      background: #d64545;
+      color: #fff;
+      text-align: center;
+      font-size: 14px;
+    }
+    .icon-btn {
+      width: 48px;
+      padding: 0;
+      display: grid;
+      place-items: center;
+      border: 0;
+    }
+    .hud2 { top: calc(max(8px, env(safe-area-inset-top)) + 56px); align-items: center; }
+    #hud-clock { font-size: calc(14px * var(--text-scale)); padding: 10px 14px; }
+    .speeds {
+      display: flex;
+      gap: 4px;
+      background: rgba(29, 39, 51, 0.88);
+      border-radius: 24px;
+      padding: 3px;
+      pointer-events: auto;
+    }
+    .speed-btn {
+      min-width: 44px;
+      min-height: 44px;
+      border-radius: 22px;
+      background: transparent;
+      display: grid;
+      place-items: center;
+      padding: 0 6px;
+    }
+    .speed-btn.active { background: var(--accent); color: #1d2733; }
+    .debt-banner {
+      position: absolute;
+      top: calc(max(8px, env(safe-area-inset-top)) + 112px);
+      left: 50%;
+      transform: translateX(-50%);
+      background: #d64545;
+      border-radius: 18px;
+      padding: 8px 16px;
+      display: none;
+      white-space: nowrap;
+      font-size: calc(13px * var(--text-scale));
+    }
+    .debt-banner.show { display: block; }
+
+    /* ---- Pop-up cards ---- */
+    .modal-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.55);
+      display: grid;
+      place-items: center;
+      padding: 16px;
+      pointer-events: auto;
+    }
+    .card {
+      background: var(--bar-bg);
+      border: 1px solid var(--bar-border);
+      border-radius: 20px;
+      padding: 18px;
+      width: 100%;
+      max-width: 340px;
+      max-height: 86vh;
+      overflow-y: auto;
+      box-sizing: border-box;
+    }
+    .card h2 {
+      margin: 0 0 12px;
+      font-size: calc(19px * var(--text-scale));
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .card p { margin: 0 0 12px; font-weight: 500; color: #c8d2dc; line-height: 1.4; }
+    .section-label { font-size: calc(12px * var(--text-scale)); color: #9fb0c0; margin-bottom: 4px; }
+    .row { display: flex; justify-content: space-between; padding: 6px 0; font-weight: 500; }
+    .row.total { border-top: 1px solid var(--bar-border); margin-top: 4px; font-weight: 700; }
+    .row.muted { color: #9fb0c0; }
+    .net {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin: 10px 0;
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: #26384a;
+      font-size: calc(18px * var(--text-scale));
+      font-weight: 700;
+    }
+    .net.gain .net-value { color: #7be0a0; }
+    .net.loss .net-value { color: #ff9a9a; }
+    .coin { animation: coin-pop 0.7s ease-out; }
+    @keyframes coin-pop {
+      0% { transform: translateY(8px) scale(0.5) rotateY(0); opacity: 0; }
+      60% { transform: translateY(-6px) scale(1.15) rotateY(360deg); opacity: 1; }
+      100% { transform: none; }
+    }
+    .primary, .secondary, .choice {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 100%;
+      min-height: 48px;
+      border-radius: 14px;
+      padding: 0 16px;
+      margin-top: 8px;
+      box-sizing: border-box;
+    }
+    .primary { background: var(--accent); color: #1d2733; justify-content: center; font-weight: 700; }
+    .secondary { background: transparent; border-color: var(--bar-border); justify-content: center; }
+    .choice { background: var(--chip-bg); }
+    .choice:disabled { opacity: 0.45; }
 
     .toast {
       position: absolute;

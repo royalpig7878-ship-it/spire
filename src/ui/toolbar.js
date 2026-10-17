@@ -19,20 +19,17 @@ export function createToolbar(root, config, callbacks) {
   let category = 'tools';
   let tool = { kind: 'pan', typeId: null };
   let funds = 0;
+  let affordKey = ''; // which items were affordable at the last render
 
-  root.innerHTML = `
-    <div class="hud">
-      <div class="pill" id="hud-funds"></div>
-      <div class="pill" id="hud-height"></div>
-    </div>
-    <div class="toast" id="toast"></div>
+  root.insertAdjacentHTML(
+    'beforeend',
+    `<div class="toast" id="toast"></div>
     <div class="toolbar">
       <div class="hint" id="hint"></div>
       <div class="tabs" id="tabs"></div>
       <div class="items" id="items"></div>
-    </div>`;
-  const fundsEl = root.querySelector('#hud-funds');
-  const heightEl = root.querySelector('#hud-height');
+    </div>`,
+  );
   const toastEl = root.querySelector('#toast');
   const hintEl = root.querySelector('#hint');
   const tabsEl = root.querySelector('#tabs');
@@ -112,15 +109,17 @@ export function createToolbar(root, config, callbacks) {
 
   return {
     toast,
-    // Called every frame; only touches the page when something changed.
-    update(newFunds, topFloor) {
-      if (newFunds !== funds || fundsEl.textContent === '') {
-        funds = newFunds;
-        fundsEl.textContent = formatMoney(funds);
-        render(); // refresh which items are affordable
+    // Called every frame; only rebuilds the buttons when which items are
+    // affordable has actually changed.
+    update(newFunds) {
+      funds = newFunds;
+      const key = Object.values(config.facilities)
+        .map((def) => (funds < def.cost ? '1' : '0'))
+        .join('');
+      if (key !== affordKey) {
+        affordKey = key;
+        render();
       }
-      const heightText = `Floors ${topFloor} / ${config.plot.maxFloor}`;
-      if (heightEl.textContent !== heightText) heightEl.textContent = heightText;
     },
   };
 }

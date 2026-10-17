@@ -27,18 +27,44 @@ export function createTower(config) {
 function addFacility(tower, config, type, floor, cell, extra = {}) {
   const width = extra.width ?? config.facilities[type].width;
   const facility = {
-    id: tower.nextId++,
+    id: extra.id ?? tower.nextId++,
     type,
     floor,
     cell,
     width,
     locked: extra.locked ?? false, // locked = cannot be demolished
+    builtMinute: extra.builtMinute ?? 0, // game-clock minute it was built (rent is prorated)
+    occupied: extra.occupied ?? true, // M4 will drive this from real tenants
   };
   tower.facilities.set(facility.id, facility);
+  tower.nextId = Math.max(tower.nextId, facility.id + 1);
   for (let c = cell; c < cell + width; c++) {
     tower.cells.set(cellKey(floor, c), facility.id);
   }
   return facility;
+}
+
+// Plain-data copy of the tower for saving.
+export function serializeTower(tower) {
+  return {
+    funds: tower.funds,
+    nextId: tower.nextId,
+    facilities: Array.from(tower.facilities.values()).map((f) => ({ ...f })),
+  };
+}
+
+// Rebuilds a tower from saved data (the inverse of serializeTower).
+export function restoreTower(config, data) {
+  const tower = {
+    funds: data.funds,
+    facilities: new Map(),
+    cells: new Map(),
+    nextId: data.nextId,
+  };
+  for (const f of data.facilities) {
+    addFacility(tower, config, f.type, f.floor, f.cell, f);
+  }
+  return tower;
 }
 
 function removeFacility(tower, facility) {
@@ -96,11 +122,11 @@ export function canPlace(tower, config, typeId, floor, cell) {
   return { ok: true, reason: '' };
 }
 
-export function place(tower, config, typeId, floor, cell) {
+export function place(tower, config, typeId, floor, cell, nowMinute = 0) {
   const check = canPlace(tower, config, typeId, floor, cell);
   if (!check.ok) return check;
   tower.funds -= config.facilities[typeId].cost;
-  addFacility(tower, config, typeId, floor, cell);
+  addFacility(tower, config, typeId, floor, cell, { builtMinute: nowMinute });
   return check;
 }
 
@@ -141,14 +167,15 @@ function isLobbyContiguous(tower) {
   return true;
 }
 
-export function refundFor(config, facility) {
-  return Math.round(config.facilities[facility.type].cost * config.economy.demolishRefundRatio);
+export function refundFor(config, facility, ratio = config.economy.demolishRefundRatio) {
+  return Math.round(config.facilities[facility.type].cost * ratio);
 }
 
-export function demolish(tower, config, facility) {
+// `ratio` lets the fire sale pay a different fraction than a normal demolish.
+export function demolish(tower, config, facility, ratio = config.economy.demolishRefundRatio) {
   const check = canDemolish(tower, config, facility);
   if (!check.ok) return check;
-  const refund = refundFor(config, facility);
+  const refund = refundFor(config, facility, ratio);
   removeFacility(tower, facility);
   tower.funds += refund;
   return { ok: true, reason: '', refund };

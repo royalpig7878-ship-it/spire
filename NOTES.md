@@ -76,6 +76,12 @@ milestone, once you've confirmed it works — never before.
 
 ## Milestone log
 
+- **M2 — Time and economy**: game clock (pause/1x/2x/4x), day/night sky
+  with sun, moon, stars and lit windows, daily upkeep, quarterly rent with
+  a report screen, soft-fail debt warning and fire sale, autosave every
+  game day plus a menu with Save / Load / New game. Game days, quarter
+  length and all prices are in `config.js` (`time` and `economy`).
+
 - **M1 — Grid and building**: cell/floor grid, lobby, build toolbar with
   category tabs, ghost-preview placement (check mark = allowed, hatched
   cross = blocked, with the reason), funds, three vector buildings

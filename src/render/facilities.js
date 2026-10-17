@@ -9,6 +9,8 @@
 //   apartment - orange, arched windows with little balconies
 //   cafe      - green, striped scalloped awning and a coffee cup
 
+import { mixToHex } from './color.js';
+
 export function roundedRectPath(ctx, x, y, w, h, r) {
   r = Math.max(0, Math.min(r, w / 2, h / 2));
   ctx.beginPath();
@@ -30,20 +32,30 @@ function shade(hex, amount) {
 }
 
 // x,y = top-left on screen; w,h = size in screen pixels; cellPx = one cell's width.
-// isMain marks the original lobby (it gets the front doors).
-export function drawFacility(ctx, typeId, def, x, y, w, h, cellPx, detailed, isMain) {
+// look = { isMain, dark, lit, sky }:
+//   isMain - the original lobby (it gets the front doors)
+//   dark   - 0 (day) .. 1 (night): dims the building
+//   lit    - 0..1: how strongly windows glow once it is dark (occupied = 1)
+//   sky    - config.sky (night tint / glow colors)
+export function drawFacility(ctx, typeId, def, x, y, w, h, cellPx, detailed, look) {
+  const { isMain, dark: night, lit, sky } = look;
+  const dim = Math.min(1, night * sky.nightDimStrength);
+  const color = mixToHex(def.color, sky.nightTint, dim);
+  let accent = mixToHex(def.accent, sky.nightTint, Math.min(1, dim * 1.2));
+  if (lit > 0) accent = mixToHex(accent, sky.windowGlow, Math.min(1, night * lit * 1.3));
+
   const inset = Math.max(0.5, h * 0.015);
   x += inset;
   y += inset;
   w -= inset * 2;
   h -= inset * 2;
 
-  ctx.fillStyle = def.color;
+  ctx.fillStyle = color;
   roundedRectPath(ctx, x, y, w, h, h * 0.12);
   ctx.fill();
   if (!detailed) return;
 
-  const dark = shade(def.color, 0.25);
+  const dark = shade(color, 0.25);
   const cells = Math.max(1, Math.round(w / cellPx));
 
   if (typeId === 'office') {
@@ -53,10 +65,10 @@ export function drawFacility(ctx, typeId, def, x, y, w, h, cellPx, detailed, isM
     for (let i = 0; i < cells; i++) {
       const wx = x + i * cellPx + cellPx * 0.12;
       const wy = y + h * 0.26;
-      ctx.fillStyle = def.accent;
+      ctx.fillStyle = accent;
       roundedRectPath(ctx, wx, wy, cellPx * 0.76, h * 0.46, h * 0.05);
       ctx.fill();
-      ctx.fillStyle = shade(def.accent, 0.18); // window mullion
+      ctx.fillStyle = shade(accent, 0.18); // window mullion
       ctx.fillRect(wx + cellPx * 0.37, wy, Math.max(1, cellPx * 0.02), h * 0.46);
     }
   } else if (typeId === 'apartment') {
@@ -65,7 +77,7 @@ export function drawFacility(ctx, typeId, def, x, y, w, h, cellPx, detailed, isM
       const ww = cellPx * 0.42;
       const wy = y + h * 0.2;
       const wh = h * 0.5;
-      ctx.fillStyle = def.accent; // arched window
+      ctx.fillStyle = accent; // arched window
       ctx.beginPath();
       ctx.moveTo(cx - ww / 2, wy + wh);
       ctx.lineTo(cx - ww / 2, wy + ww / 2);
@@ -85,7 +97,7 @@ export function drawFacility(ctx, typeId, def, x, y, w, h, cellPx, detailed, isM
     roundedRectPath(ctx, x, y, w, h, h * 0.12);
     ctx.clip();
     for (let i = 0; i < stripes; i++) {
-      ctx.fillStyle = i % 2 === 0 ? def.accent : dark;
+      ctx.fillStyle = i % 2 === 0 ? accent : dark;
       const sx = x + i * stripe;
       const sw = Math.min(stripe, x + w - sx);
       ctx.fillRect(sx, y, sw, awningH);
@@ -94,7 +106,7 @@ export function drawFacility(ctx, typeId, def, x, y, w, h, cellPx, detailed, isM
       ctx.fill();
     }
     ctx.restore();
-    ctx.fillStyle = shade(def.accent, 0.08); // shop window
+    ctx.fillStyle = shade(accent, 0.08); // shop window
     roundedRectPath(ctx, x + w * 0.06, y + h * 0.5, w * 0.88, h * 0.38, h * 0.06);
     ctx.fill();
     // Coffee cup icon
@@ -118,7 +130,7 @@ export function drawFacility(ctx, typeId, def, x, y, w, h, cellPx, detailed, isM
     ctx.fillStyle = dark; // base strip
     ctx.fillRect(x, y + h * 0.88, w, h * 0.12);
     for (let i = 0; i < cells; i++) {
-      ctx.fillStyle = def.accent; // tall glass panels
+      ctx.fillStyle = accent; // tall glass panels
       roundedRectPath(ctx, x + i * cellPx + cellPx * 0.14, y + h * 0.16, cellPx * 0.72, h * 0.66, h * 0.05);
       ctx.fill();
     }
@@ -131,7 +143,7 @@ export function drawFacility(ctx, typeId, def, x, y, w, h, cellPx, detailed, isM
       ctx.fillStyle = '#3a4a57'; // doorway
       roundedRectPath(ctx, dx, y + h * 0.26, doorW, h * 0.62, h * 0.06);
       ctx.fill();
-      ctx.fillStyle = def.accent; // two door panes
+      ctx.fillStyle = accent; // two door panes
       ctx.fillRect(dx + doorW * 0.06, y + h * 0.3, doorW * 0.41, h * 0.54);
       ctx.fillRect(dx + doorW * 0.53, y + h * 0.3, doorW * 0.41, h * 0.54);
     }
