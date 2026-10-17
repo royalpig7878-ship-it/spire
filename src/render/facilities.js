@@ -11,6 +11,30 @@
 
 import { mixToHex } from './color.js';
 
+// Warning triangle shown on facilities that no stairs or elevator reaches.
+// (Shape + "!" so it is readable without relying on color.)
+export function drawNoAccessBadge(ctx, x, y, w, h) {
+  const s = Math.max(10, Math.min(h * 0.5, w * 0.4, 22));
+  const cx = x + s * 0.8;
+  const cy = y + s * 0.75;
+  ctx.fillStyle = '#f2b134';
+  ctx.strokeStyle = '#7a4b00';
+  ctx.lineWidth = Math.max(1, s * 0.08);
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - s * 0.5);
+  ctx.lineTo(cx + s * 0.55, cy + s * 0.45);
+  ctx.lineTo(cx - s * 0.55, cy + s * 0.45);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = '#4a2c00';
+  ctx.font = `800 ${s * 0.6}px system-ui, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('!', cx, cy + s * 0.12);
+  ctx.textAlign = 'start';
+}
+
 export function roundedRectPath(ctx, x, y, w, h, r) {
   r = Math.max(0, Math.min(r, w / 2, h / 2));
   ctx.beginPath();
@@ -125,6 +149,40 @@ export function drawFacility(ctx, typeId, def, x, y, w, h, cellPx, detailed, loo
     ctx.lineWidth = Math.max(1, s * 0.3);
     ctx.beginPath();
     ctx.arc(cx + s, cy, s * 0.45, -Math.PI / 2, Math.PI / 2);
+    ctx.stroke();
+  } else if (typeId === 'stairs') {
+    // A flight of steps; every other floor mirrors it so a column zigzags.
+    const flip = (look.tileIndex ?? 0) % 2 === 1;
+    const left = x + w * 0.12;
+    const right = x + w * 0.88;
+    const base = y + h * 0.92;
+    const topY = y + h * 0.14;
+    const mx = (v) => (flip ? left + right - v : v);
+    const steps = 6;
+    ctx.fillStyle = accent;
+    ctx.beginPath();
+    ctx.moveTo(mx(left), base);
+    for (let i = 0; i < steps; i++) {
+      const ty = base - ((base - topY) * (i + 1)) / steps;
+      ctx.lineTo(mx(left + ((right - left) * i) / steps), ty);
+      ctx.lineTo(mx(left + ((right - left) * (i + 1)) / steps), ty);
+    }
+    ctx.lineTo(mx(right), base);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = shade(color, 0.5); // handrail
+    ctx.lineWidth = Math.max(1, h * 0.04);
+    ctx.beginPath();
+    ctx.moveTo(mx(left), base - h * 0.2);
+    ctx.lineTo(mx(right), topY - h * 0.04);
+    ctx.stroke();
+  } else if (typeId === 'elevator') {
+    // Dark shaft opening with a frame; the car is drawn separately on top.
+    ctx.fillStyle = shade(color, 0.55);
+    roundedRectPath(ctx, x + w * 0.12, y + h * 0.06, w * 0.76, h * 0.9, h * 0.06);
+    ctx.fill();
+    ctx.strokeStyle = shade(color, 0.2);
+    ctx.lineWidth = Math.max(1, h * 0.05);
     ctx.stroke();
   } else if (typeId === 'lobby') {
     ctx.fillStyle = dark; // base strip

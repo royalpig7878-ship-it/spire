@@ -9,6 +9,7 @@ export const CATEGORIES = [
   { id: 'work', label: 'Work' },
   { id: 'living', label: 'Living' },
   { id: 'commerce', label: 'Commerce' },
+  { id: 'transport', label: 'Transport' },
   { id: 'lobby', label: 'Lobby' },
 ];
 

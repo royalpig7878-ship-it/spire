@@ -10,6 +10,7 @@
 // the `handlers` it is given:
 //   wantsPlacement()                  -> true while a build/demolish tool is on
 //   onPlaceStart/Move/End(world, pointerType), onPlaceCancel()
+//   onTap(world)                      -> a clean single tap while in pan mode
 
 export function createInputController(canvas, camera, config, handlers) {
   const cameraConfig = config.camera;
@@ -123,6 +124,7 @@ export function createInputController(canvas, camera, config, handlers) {
 
     // Double-tap to zoom: only in pan mode, only for a clean single-finger tap.
     if (!pointer || pointer.moved || sawMultiTouch || handlers.wantsPlacement()) return;
+    if (handlers.onTap) handlers.onTap(screenToWorld(event.clientX, event.clientY));
     const nowMs = performance.now();
     const close =
       Math.hypot(event.clientX - lastTapX, event.clientY - lastTapY) < cameraConfig.doubleTapMaxDistancePx;

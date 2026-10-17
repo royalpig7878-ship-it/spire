@@ -7,7 +7,8 @@
 // offer, an autosave) are pushed onto `game.events`. The UI reads and
 // clears that list — the simulation never touches the screen itself.
 
-import { createTower, canDemolish, demolish } from './tower.js';
+import { createTower, canDemolish, demolish, buildCost } from './tower.js';
+import { createElevatorSystem, updateElevators } from './elevators.js';
 import { createClock, calendar, dayIndex, MINUTES_PER_DAY } from './clock.js';
 import { createEconomy, dailyUpkeep, quarterlyRent } from './economy.js';
 
@@ -16,6 +17,8 @@ export function createGame(config) {
     tower: createTower(config),
     clock: createClock(config),
     economy: createEconomy(),
+    elevators: createElevatorSystem(), // cars and riders (not saved; rebuilt on load)
+    demoTraffic: false, // Tools tab toggle: random riders for watching dispatch
     speed: config.time.defaultSpeed,
     blocked: false, // true while a report/offer is waiting for the player
     events: [],
@@ -25,6 +28,10 @@ export function createGame(config) {
 // Advance the game by `dtSeconds` of real time.
 export function updateGame(game, config, dtSeconds) {
   if (game.blocked || game.speed === 0) return;
+
+  // Elevators run in "sim seconds" (real seconds x speed), separate from the
+  // game clock, so cars stay watchable even though a game day is short.
+  updateElevators(game, config, dtSeconds * game.speed);
 
   let minutesLeft = (dtSeconds * game.speed * MINUTES_PER_DAY) / config.time.dayLengthSeconds;
   const clock = game.clock;
@@ -101,12 +108,12 @@ function onNewDay(game, config) {
 export function fireSaleOffers(game, config) {
   return Array.from(game.tower.facilities.values())
     .filter((f) => !f.locked && canDemolish(game.tower, config, f).ok)
-    .sort((a, b) => config.facilities[b.type].cost - config.facilities[a.type].cost)
+    .sort((a, b) => buildCost(config, b) - buildCost(config, a))
     .slice(0, config.economy.fireSaleOffers)
     .map((f) => ({
       facility: f,
       name: config.facilities[f.type].name,
-      value: Math.round(config.facilities[f.type].cost * config.economy.fireSaleRatio),
+      value: Math.round(buildCost(config, f) * config.economy.fireSaleRatio),
     }));
 }
 

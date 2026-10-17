@@ -4,7 +4,7 @@
 // earns each quarter (rent). Pure calculations — no drawing, no timing.
 // All the numbers come from config.js.
 
-import { tallestFloor } from './tower.js';
+import { tallestFloor, isConnected } from './tower.js';
 import { MINUTES_PER_DAY } from './clock.js';
 
 export function createEconomy() {
@@ -19,7 +19,7 @@ export function createEconomy() {
 export function dailyUpkeep(tower, config) {
   let base = 0;
   for (const f of tower.facilities.values()) {
-    base += f.width * config.facilities[f.type].upkeepPerCell;
+    base += f.width * f.height * config.facilities[f.type].upkeepPerCell;
   }
   const sizeFactor = 1 + config.economy.sizeUpkeepPerFloor * tallestFloor(tower);
   return Math.round(base * sizeFactor);
@@ -35,7 +35,8 @@ export function quarterlyRent(tower, config, quarterStartMinute, quarterEndMinut
 
   for (const f of tower.facilities.values()) {
     const def = config.facilities[f.type];
-    if (!f.occupied || def.rentPerCell <= 0) continue;
+    // Only occupied facilities that people can actually reach pay rent.
+    if (!f.occupied || def.rentPerCell <= 0 || !isConnected(tower, config, f)) continue;
     const ownedFrom = Math.max(quarterStartMinute, f.builtMinute);
     const fraction = Math.max(0, Math.min(1, (quarterEndMinute - ownedFrom) / quarterMinutes));
     const rent = Math.round(f.width * def.rentPerCell * fraction);

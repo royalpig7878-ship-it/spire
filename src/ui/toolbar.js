@@ -11,6 +11,8 @@ import { formatMoney } from '../data/format.js';
 const ICONS = {
   pan:
     '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/></svg>',
+  people:
+    '<svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor"><circle cx="8" cy="7" r="3"/><circle cx="17" cy="8" r="2.5"/><path d="M2 20c0-4 2.5-7 6-7s6 3 6 7zM14 20c0-3 1.5-5.5 4-5.5s4 2.5 4 5.5z"/></svg>',
   demolish:
     '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13M10 11v6M14 11v6"/></svg>',
 };
@@ -73,6 +75,14 @@ export function createToolbar(root, config, callbacks) {
           selectTool({ kind: 'demolish', typeId: null }),
         ),
       );
+      // Not a tool: an on/off switch for random test riders in the elevators.
+      const demoOn = callbacks.getDemo();
+      itemsEl.appendChild(
+        makeButton('item' + (demoOn ? ' active' : ''), `${ICONS.people}<span class="name">Demo riders: ${demoOn ? 'ON' : 'off'}</span>`, () => {
+          callbacks.onDemoToggle();
+          render();
+        }),
+      );
     } else {
       for (const def of facilitiesInCategory(config, category)) {
         const selected = tool.kind === 'build' && tool.typeId === def.id;
@@ -81,7 +91,7 @@ export function createToolbar(root, config, callbacks) {
           'item' + (selected ? ' active' : '') + (poor ? ' poor' : ''),
           `<span class="swatch" style="background:${def.color};border-color:${def.accent}">${def.width}</span>
            <span class="name">${def.name}</span>
-           <span class="cost">${poor ? 'Need ' : ''}${formatMoney(def.cost)}</span>`,
+           <span class="cost">${poor ? 'Need ' : ''}${formatMoney(def.cost)}${def.vertical ? '/floor' : ''}</span>`,
           () => selectTool({ kind: 'build', typeId: def.id }),
         );
         itemsEl.appendChild(b);
@@ -89,11 +99,14 @@ export function createToolbar(root, config, callbacks) {
     }
 
     if (tool.kind === 'build') {
-      hintEl.textContent = `Drag on the tower to place ${config.facilities[tool.typeId].name}. Let go to build. Two fingers move the view.`;
+      const def = config.facilities[tool.typeId];
+      hintEl.textContent = def.vertical
+        ? `Press where it starts, drag up or down for more floors, let go to build ${def.name}.`
+        : `Drag on the tower to place ${def.name}. Let go to build. Two fingers move the view.`;
     } else if (tool.kind === 'demolish') {
       hintEl.textContent = 'Drag onto a building and let go to demolish it (partial refund).';
     } else {
-      hintEl.textContent = 'Drag to pan, pinch to zoom. Pick a building below to start.';
+      hintEl.textContent = 'Drag to pan, pinch to zoom. Tap an elevator shaft to send a rider.';
     }
   }
 

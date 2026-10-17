@@ -138,6 +138,66 @@ export const config = {
       color: '#3f9d70',
       accent: '#f6f1e7',
     },
+    // --- Transport ---
+    // vertical: true = you drag up/down to choose how many floors it spans;
+    // `cost` and upkeep are then PER FLOOR. transport: what kind of link it is.
+    // A stairwell on floor N joins floor N with the floor below it.
+    stairs: {
+      name: 'Stairwell',
+      category: 'transport',
+      width: 2,
+      cost: 600,
+      minFloor: 1,
+      vertical: true,
+      transport: 'stairs',
+      rentPerCell: 0,
+      upkeepPerCell: 2,
+      color: '#a79b86',
+      accent: '#6f6455',
+    },
+    // An elevator shaft joins every floor it spans (it may start in the lobby).
+    elevator: {
+      name: 'Local elevator',
+      category: 'transport',
+      width: 2,
+      cost: 1800,
+      minFloor: 0,
+      vertical: true,
+      transport: 'elevator',
+      rentPerCell: 0,
+      upkeepPerCell: 5,
+      color: '#66788a',
+      accent: '#e8d9a8',
+    },
+  },
+
+  // --- Elevators ---
+  // Times are in "sim seconds": real seconds at 1x speed (2x/4x run faster).
+  elevators: {
+    defaultCars: 1, // cars per shaft (the shaft settings screen comes in M5)
+    car: {
+      capacity: 8, // riders per car
+      speedFloorsPerSec: 2.4, // travel speed
+      doorSeconds: 0.7, // time for doors to open (or close)
+      dwellSeconds: 1.3, // doors stay open this long after the last person moves
+      exchangeSeconds: 0.28, // time for one person to step on or off
+      idleParkSeconds: 4, // an idle car drives back to its home floor after this long
+    },
+    // How hall calls are matched to cars (see src/sim/elevators.js).
+    dispatch: {
+      reassignEverySec: 0.25, // how often hall calls are re-matched to cars
+      hysteresisFloors: 1.5, // only switch a call to another car if it is this much better
+      stopPenaltyFloors: 0.6, // each extra stop on the way counts as this many floors of delay
+      bunchDistanceFloors: 3, // two cars chasing calls this close together are "bunching"
+      bunchPenaltyFloors: 4, // extra cost for sending a car right next to another busy car
+      loadPenaltyFloors: 2, // extra cost for a nearly full car
+    },
+    maxQueuePerFloor: 14, // riders that can wait at one stop
+    // Waiting-rider moods (seconds waited). Tenants in M4 reuse these.
+    impatientAfterSec: 10,
+    stressedAfterSec: 22,
+    // Demo traffic (Tools tab) spawns random riders so you can watch dispatch.
+    demoSpawnEverySec: 1.1,
   },
 
   // --- Sky colors through the day ---

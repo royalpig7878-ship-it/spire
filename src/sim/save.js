@@ -8,6 +8,7 @@
 // (we never crash because of a bad save).
 
 import { serializeTower, restoreTower } from './tower.js';
+import { createElevatorSystem } from './elevators.js';
 
 export function saveGame(game, config) {
   try {
@@ -46,6 +47,7 @@ export function loadGame(game, config) {
     game.clock.minutes = data.clockMinutes;
     game.economy = { upkeepThisQuarter: 0, debtDays: 0, ...data.economy };
     game.speed = data.speed ?? config.time.defaultSpeed;
+    game.elevators = createElevatorSystem(); // cars restart at their home floors
     game.blocked = false;
     game.events = [];
     return true;

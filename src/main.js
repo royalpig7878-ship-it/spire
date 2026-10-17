@@ -8,6 +8,7 @@ import { config } from '../config.js';
 import { createGameLoop } from './sim/loop.js';
 import { createGame, updateGame, fireSaleOffers, fireSaleSell, fireSaleDecline } from './sim/game.js';
 import { canPlace, place, canDemolish, demolish, facilityAt, refundFor, tallestFloor } from './sim/tower.js';
+import { requestRide } from './sim/elevators.js';
 import { calendar, hourOfDay, formatTime } from './sim/clock.js';
 import { saveGame, loadGame, hasSave } from './sim/save.js';
 import { createInputController } from './ui/input.js';
@@ -44,6 +45,10 @@ const toolbar = createToolbar(uiRoot, config, {
     ui.tool = tool;
     ui.ghost = null;
     ui.demolishTarget = null;
+  },
+  getDemo: () => game.demoTraffic,
+  onDemoToggle() {
+    game.demoTraffic = !game.demoTraffic;
   },
 });
 const modals = createModals(uiRoot);
@@ -116,8 +121,11 @@ function pumpModals() {
 
 // ---- Placement gestures (reported by the input layer) ----
 
+let dragAnchor = null; // where a stairs/elevator drag began: { floor, cell }
+
 // Figure out which grid slot the finger is pointing at and update previews.
-function updatePreview(world, pointerType) {
+// `starting` is true on the first touch of a drag.
+function updatePreview(world, pointerType, starting = false) {
   const { cellWidth, floorHeight } = config.grid;
   // On touch screens, aim a little above the fingertip so it isn't hidden.
   const lift = pointerType === 'touch' ? config.build.touchOffsetPx / camera.zoom : 0;
@@ -125,10 +133,23 @@ function updatePreview(world, pointerType) {
   const tower = game.tower;
 
   if (ui.tool.kind === 'build') {
-    const def = config.facilities[ui.tool.typeId];
+    const typeId = ui.tool.typeId;
+    const def = config.facilities[typeId];
     const cell = Math.round(world.x / cellWidth - def.width / 2); // center ghost on finger
-    const check = canPlace(tower, config, ui.tool.typeId, floor, cell);
-    ui.ghost = { typeId: ui.tool.typeId, floor, cell, ok: check.ok, reason: check.reason };
+    if (def.vertical) {
+      // Stairs / elevators: the first press fixes the column and start floor,
+      // then dragging up or down chooses how many floors it spans.
+      const clamp = (fl) => Math.max(def.minFloor, Math.min(config.plot.maxFloor, fl));
+      if (starting || !dragAnchor) dragAnchor = { floor: clamp(floor), cell };
+      const current = clamp(floor);
+      const bottom = Math.min(dragAnchor.floor, current);
+      const height = Math.abs(current - dragAnchor.floor) + 1;
+      const check = canPlace(tower, config, typeId, bottom, dragAnchor.cell, height);
+      ui.ghost = { typeId, floor: bottom, cell: dragAnchor.cell, height, ok: check.ok, reason: check.reason };
+    } else {
+      const check = canPlace(tower, config, typeId, floor, cell);
+      ui.ghost = { typeId, floor, cell, height: 1, ok: check.ok, reason: check.reason };
+    }
   } else if (ui.tool.kind === 'demolish') {
     const target = facilityAt(tower, floor, Math.floor(world.x / cellWidth));
     if (!target) {
@@ -148,22 +169,42 @@ function updatePreview(world, pointerType) {
 function clearPreview() {
   ui.ghost = null;
   ui.demolishTarget = null;
+  dragAnchor = null;
+}
+
+// Tap an elevator shaft (in pan mode) to send a test rider from that floor.
+function onTap(world) {
+  const { cellWidth, floorHeight } = config.grid;
+  const floor = Math.floor(-world.y / floorHeight);
+  const target = facilityAt(game.tower, floor, Math.floor(world.x / cellWidth));
+  if (!target || config.facilities[target.type].transport !== 'elevator') return;
+  const bottom = target.floor;
+  const top = target.floor + target.height - 1;
+  if (top === bottom) return;
+  const others = [];
+  for (let fl = bottom; fl <= top; fl++) if (fl !== floor) others.push(fl);
+  // From the bottom: go up somewhere. From above: usually head back down.
+  const dest =
+    floor === bottom || Math.random() > 0.65
+      ? others[Math.floor(Math.random() * others.length)]
+      : bottom;
+  if (!requestRide(game, config, floor, dest)) toolbar.toast('The line is full');
 }
 
 const placementHandlers = {
   wantsPlacement: () => ui.tool.kind !== 'pan',
-  onPlaceStart: updatePreview,
-  onPlaceMove: updatePreview,
+  onPlaceStart: (world, pointerType) => updatePreview(world, pointerType, true),
+  onPlaceMove: (world, pointerType) => updatePreview(world, pointerType, false),
+  onTap,
   onPlaceEnd(world, pointerType) {
-    updatePreview(world, pointerType);
+    updatePreview(world, pointerType, false);
     const tower = game.tower;
     if (ui.ghost) {
       const g = ui.ghost;
-      const result = place(tower, config, g.typeId, g.floor, g.cell, game.clock.minutes);
+      const result = place(tower, config, g.typeId, g.floor, g.cell, game.clock.minutes, g.height);
+      const total = config.facilities[g.typeId].cost * g.height;
       toolbar.toast(
-        result.ok
-          ? `Built ${config.facilities[g.typeId].name}  -${formatMoney(config.facilities[g.typeId].cost)}`
-          : result.reason,
+        result.ok ? `Built ${config.facilities[g.typeId].name}  -${formatMoney(total)}` : result.reason,
       );
     } else if (ui.demolishTarget) {
       const result = demolish(tower, config, ui.demolishTarget.facility);
@@ -219,8 +260,11 @@ const loop = createGameLoop({
     game.blocked = modals.isOpen() || modalQueue.length > 0;
     updateGame(game, config, dtSeconds);
   },
-  render(_alpha) {
+  render(alpha) {
     clampCamera();
+    // While the game is paused/blocked the sim is not ticking: draw cars
+    // exactly where they are instead of sliding between stale positions.
+    const smooth = game.blocked || game.speed === 0 ? 1 : alpha;
     const cal = calendar(game.clock, config);
     hud.update({
       funds: game.tower.funds,
@@ -240,8 +284,13 @@ const loop = createGameLoop({
       game.tower,
       ui,
       hourOfDay(game.clock),
+      game.elevators,
+      smooth,
     );
   },
 });
+
+// Handy for testing in the browser console: window.spire.game
+window.spire = { game, config, camera };
 
 loop.start();

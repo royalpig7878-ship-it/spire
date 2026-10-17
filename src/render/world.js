@@ -4,13 +4,16 @@
 // the placement ghost. It only READS the tower and ui state — it never
 // changes them. (Simulation stays in src/sim.)
 
-import { drawFacility, roundedRectPath } from './facilities.js';
+import { drawFacility, drawNoAccessBadge, roundedRectPath } from './facilities.js';
+import { drawElevators } from './elevators.js';
 import { drawSky } from './sky.js';
 import { mixToHex } from './color.js';
+import { isConnected } from '../sim/tower.js';
 import { formatMoney } from '../data/format.js';
 
-// `hour` is the time of day (0-24) from the game clock.
-export function renderWorld(ctx, W, H, camera, config, tower, ui, hour) {
+// `hour` is the time of day (0-24) from the game clock. `elevators` is the
+// elevator system state; `alpha` (0-1) smooths motion between sim ticks.
+export function renderWorld(ctx, W, H, camera, config, tower, ui, hour, elevators, alpha) {
   const world = config.world;
   const { cellWidth, floorHeight } = config.grid;
   const zoom = camera.zoom;
@@ -70,30 +73,53 @@ export function renderWorld(ctx, W, H, camera, config, tower, ui, hour) {
     ctx.stroke();
   }
 
-  // --- Facilities (skip anything off-screen) ---
+  // --- Facilities (skip anything off-screen). Tall ones (stairs, elevator
+  // shafts) are drawn one floor tile at a time. ---
   const detailed = zoom >= world.detailMinZoom;
   for (const f of tower.facilities.values()) {
     const x = slotX(f.cell);
-    const y = slotY(f.floor);
     const w = f.width * cellPx;
-    if (x > W || x + w < 0 || y > H || y + floorPx < 0) continue;
-    const look = { isMain: f.locked, dark: skyState.dark, lit: f.occupied ? 1 : 0, sky: config.sky };
-    drawFacility(ctx, f.type, config.facilities[f.type], x, y, w, floorPx, cellPx, detailed, look);
+    if (x > W || x + w < 0) continue;
+    const def = config.facilities[f.type];
+    const connected = isConnected(tower, config, f);
+    const look = {
+      isMain: f.locked,
+      dark: skyState.dark,
+      lit: f.occupied && connected && !def.transport ? 1 : 0,
+      sky: config.sky,
+      tileIndex: 0,
+    };
+    for (let i = 0; i < f.height; i++) {
+      const y = slotY(f.floor + i);
+      if (y > H || y + floorPx < 0) continue;
+      look.tileIndex = i;
+      drawFacility(ctx, f.type, def, x, y, w, floorPx, cellPx, detailed, look);
+    }
+    if (!connected && !def.transport && detailed) {
+      drawNoAccessBadge(ctx, x, slotY(f.floor), w, floorPx);
+    }
   }
 
-  // --- Ghost (build preview) ---
+  // --- Elevator cars, call buttons and waiting riders ---
+  drawElevators(ctx, W, H, camera, config, elevators, alpha);
+
+  // --- Ghost (build preview; may be several floors tall) ---
   if (ui.ghost) {
     const g = ui.ghost;
     const def = config.facilities[g.typeId];
     const x = slotX(g.cell);
-    const y = slotY(g.floor);
     const w = def.width * cellPx;
+    const topY = slotY(g.floor + g.height - 1);
     ctx.save();
     ctx.globalAlpha = 0.7;
-    const ghostLook = { isMain: false, dark: skyState.dark, lit: 0, sky: config.sky };
-    drawFacility(ctx, g.typeId, def, x, y, w, floorPx, cellPx, detailed, ghostLook);
+    const ghostLook = { isMain: false, dark: skyState.dark, lit: 0, sky: config.sky, tileIndex: 0 };
+    for (let i = 0; i < g.height; i++) {
+      ghostLook.tileIndex = i;
+      drawFacility(ctx, g.typeId, def, x, slotY(g.floor + i), w, floorPx, cellPx, detailed, ghostLook);
+    }
     ctx.restore();
-    drawVerdict(ctx, world, x, y, w, floorPx, g.ok, g.ok ? formatMoney(def.cost) : g.reason);
+    const label = g.ok ? formatMoney(def.cost * g.height) : g.reason;
+    drawVerdict(ctx, world, x, topY, w, floorPx * g.height, g.ok, label);
   }
 
   // --- Demolish target highlight ---
@@ -101,7 +127,7 @@ export function renderWorld(ctx, W, H, camera, config, tower, ui, hour) {
     const t = ui.demolishTarget;
     const f = t.facility;
     const label = t.ok ? `Demolish  +${formatMoney(t.refund)}` : t.reason;
-    drawVerdict(ctx, world, slotX(f.cell), slotY(f.floor), f.width * cellPx, floorPx, t.ok, label, true);
+    drawVerdict(ctx, world, slotX(f.cell), slotY(f.floor + f.height - 1), f.width * cellPx, floorPx * f.height, t.ok, label, true);
   }
 }
 

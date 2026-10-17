@@ -76,6 +76,15 @@ milestone, once you've confirmed it works — never before.
 
 ## Milestone log
 
+- **M3 — Vertical transport**: stairwells and local elevators (drag up or
+  down to choose how many floors), elevator cars with sliding doors,
+  call buttons, queues, riders, and dispatch (the algorithm is explained
+  in the big comment at the top of `src/sim/elevators.js`). Buildings
+  must now connect to the lobby, and anything the player cannot reach
+  shows a warning triangle and pays no rent. Tap a shaft to send a rider;
+  the Tools tab has a "Demo riders" switch for random traffic. Elevator
+  numbers are in `config.js` under `elevators`.
+
 - **M2 — Time and economy**: game clock (pause/1x/2x/4x), day/night sky
   with sun, moon, stars and lit windows, daily upkeep, quarterly rent with
   a report screen, soft-fail debt warning and fire sale, autosave every
