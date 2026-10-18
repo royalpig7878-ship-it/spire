@@ -148,6 +148,22 @@ export function drawPose(ctx, pose, x, y, scale, flip, phase, c) {
       head(ctx, 0.6, -25.5 - bob, c.skin, c.hair);
       break;
     }
+    case 'climb': {
+      // going up (or down) steps: knees lifting alternately, leaning in, arms swinging
+      const s = Math.sin(phase * 7);
+      const lift1 = Math.max(0, s) * 5;
+      const lift2 = Math.max(0, -s) * 5;
+      const bob = Math.abs(s) * 0.8;
+      ctx.rotate(0.08);
+      limb(ctx, -1.2, -10 - bob, -1.2 + s * 3.5, -lift1, 3, PANTS);
+      limb(ctx, 1.2, -10 - bob, 1.2 - s * 3.5, -lift2, 3, PANTS);
+      roundBox(ctx, -4.5, -21 - bob, 9, 12, 3, c.shirt);
+      limb(ctx, 0, -19 - bob, -s * 4, -12 - bob, 2.4, c.shirt);
+      limb(ctx, 0, -19 - bob, s * 4, -12 - bob, 2.4, c.shirt);
+      if (c.bag) roundBox(ctx, 4 + s * 2, -13 - bob, 6, 5, 1, '#5b3a24');
+      head(ctx, 0.8, -25.5 - bob, c.skin, c.hair);
+      break;
+    }
     case 'read': {
       // sitting without a chair (sofa or bed edge), holding up a book
       limb(ctx, -1, -9, 7, -9, 3.2, PANTS);

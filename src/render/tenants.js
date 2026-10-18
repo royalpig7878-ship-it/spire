@@ -62,6 +62,9 @@ export function drawTenants(ctx, W, H, camera, config, sys, highlightId = null, 
       drawIcon(ctx, 'star', x, baseY - floorPx * 1.12, Math.max(5, floorPx * 0.13), '#ffd166');
       continue;
     }
+    // Cutaway: on stairs and escalators, follow the diagonal of the steps.
+    if (cutaway && !inside && onSteps(ctx, t, config, cutaway, sys, camera, W, H, seconds, floorPx, mood)) continue;
+
     // Cutaway: walkers get the same drawing style, facing the way they are heading.
     if (cutaway && !inside) {
       const last = lastX.get(t.id);
@@ -147,5 +150,41 @@ function drawInRoom(ctx, t, config, cutaway, camera, W, H, seconds, floorPx) {
     seconds + t.id * 0.7,
     { shirt: mood === 'calm' ? shirtOf(t.id) : MOOD_COLORS[mood], skin: config.tenants.traits[t.trait].color, hair: hairOf(t.id) },
   );
+  return true;
+}
+
+// A person on a staircase or escalator: they walk (or ride) up the drawn steps, diagonally.
+// Returns true when the person was drawn.
+function onSteps(ctx, t, config, cutaway, sys, camera, W, H, seconds, floorPx, mood) {
+  const leg = t.route?.[t.legIdx];
+  if (!leg || leg.type !== 'stairs' || !t.pos) return false;
+  const f = cutaway.tower.facilities.get(leg.id);
+  if (!f) return false;
+  const def = config.facilities[f.type];
+  const { cellWidth, floorHeight } = config.grid;
+  const zoom = camera.zoom;
+  const up = leg.toFloor > leg.fromFloor;
+  const a = t.pos.floor;
+  // which floor's tile they are on, and how far along it (0 bottom .. 1 top)
+  let tileFloor = Math.floor(a + 1e-6);
+  if (!up && Math.abs(a - Math.round(a)) < 1e-6) tileFloor = Math.round(a) - 1; // starting a descent: top of the tile below
+  tileFloor = Math.max(Math.min(leg.fromFloor, leg.toFloor), Math.min(tileFloor, Math.max(leg.fromFloor, leg.toFloor) - 1));
+  const p = Math.min(1, Math.max(0, a - tileFloor));
+  const flipTile = Math.abs(tileFloor) % 2 === 1; // same rule the steps are drawn with
+  const fx = (f.cell * cellWidth - camera.x) * zoom + W / 2;
+  const fw = f.width * cellWidth * zoom;
+  const tileTop = (-(tileFloor + 1) * floorHeight - camera.y) * zoom + H / 2;
+  const left = fx + fw * 0.12;
+  const right = fx + fw * 0.88;
+  const x = flipTile ? right - (right - left) * p : left + (right - left) * p;
+  const feetY = tileTop + floorPx * (0.92 - 0.88 * p);
+  if (x < -30 || x > W + 30 || feetY < -30 || feetY - floorPx > H) return true;
+  const facingRight = (up ? 1 : -1) * (flipTile ? -1 : 1) > 0;
+  drawPose(ctx, def.transport === 'escalator' ? 'stand' : 'climb', x, feetY, (floorPx / 48) * 1.05, !facingRight, seconds + t.id * 1.3, {
+    shirt: mood === 'calm' ? shirtOf(t.id) : MOOD_COLORS[mood],
+    skin: config.tenants.traits[t.trait].color,
+    hair: hairOf(t.id),
+    bag: t.kind === 'worker',
+  });
   return true;
 }

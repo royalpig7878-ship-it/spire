@@ -93,6 +93,12 @@ milestone, once you've confirmed it works — never before.
   reach, pay, lift weights, dance). The code is `personSpot` in
   `src/render/rooms.js`, and the new animations are in `src/render/poses.js`.
 
+- **Stairs fix** (after M10): stairs and escalators now zigzag by the real
+  floor number, so ones built one floor at a time alternate just like a
+  stairwell built in one go. People climb the drawn steps diagonally, with a
+  stepping animation (and stand still on escalators) instead of sliding
+  straight up.
+
 - **Recorded sounds** (after M10): the game's building, demolish, money,
   warning and level-up sounds, plus birds and distant street noises, now use
   recordings from the **Ovani Sound "Building Tycoon Sound FX Pack"** that you

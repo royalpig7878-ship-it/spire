@@ -476,11 +476,11 @@ export function drawFacility(ctx, typeId, def, x, y, w, h, cellPx, detailed, loo
     }
   } else if (typeId === 'escalator') {
     // A diagonal belt with chevrons; flips every other floor like stairs.
-    const flip = (look.tileIndex ?? 0) % 2 === 1;
+    const flip = Math.abs(look.floor ?? look.tileIndex ?? 0) % 2 === 1; // by real floor number, so stairs built one at a time still zigzag
     const left = x + w * 0.12;
     const right = x + w * 0.88;
     const base = y + h * 0.9;
-    const topY = y + h * 0.14;
+    const topY = y + h * 0.04;
     const mx = (v) => (flip ? left + right - v : v);
     ctx.strokeStyle = accent;
     ctx.lineWidth = Math.max(2, h * 0.16);
@@ -502,11 +502,11 @@ export function drawFacility(ctx, typeId, def, x, y, w, h, cellPx, detailed, loo
     }
   } else if (typeId === 'stairs') {
     // A flight of steps; every other floor mirrors it so a column zigzags.
-    const flip = (look.tileIndex ?? 0) % 2 === 1;
+    const flip = Math.abs(look.floor ?? look.tileIndex ?? 0) % 2 === 1; // by real floor number, so stairs built one at a time still zigzag
     const left = x + w * 0.12;
     const right = x + w * 0.88;
     const base = y + h * 0.92;
-    const topY = y + h * 0.14;
+    const topY = y + h * 0.04;
     const mx = (v) => (flip ? left + right - v : v);
     const steps = 6;
     ctx.fillStyle = accent;
