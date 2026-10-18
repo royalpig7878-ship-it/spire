@@ -332,7 +332,6 @@ export function createModals(root) {
           ).join('')}
           <div class="setting"><span>Sound effects</span><input type="range" id="set-sfx" min="0" max="1" step="0.05" value="${settings.sfxVolume}" aria-label="Sound effects volume" /></div>
           <div class="setting"><span>Music</span><input type="range" id="set-music" min="0" max="1" step="0.05" value="${settings.musicVolume}" aria-label="Music volume" /></div>
-          <p class="note">No sound on iPhone? Turn the silent switch (the little switch above the volume buttons) off, and turn the volume up.</p>
           <button class="choice" id="set-tutorial" type="button"><span>Replay the tutorial</span></button>
           ${canInstall ? '<button class="choice" id="set-install" type="button"><span>Install the app on this device</span></button>' : ''}
           <p class="note">On iPhone: tap Share, then "Add to Home Screen" to install.</p>

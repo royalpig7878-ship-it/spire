@@ -243,11 +243,11 @@ export function createAudio(settings) {
     lastAmbSet = ctx.currentTime;
     // a living murmur: the level wobbles a little instead of sitting flat
     const wobble = 0.85 + Math.random() * 0.3;
-    smooth(amb.crowd.gain.gain, 0.085 * crowd * wobble, 0.5);
-    smooth(amb.crowd2.gain.gain, 0.04 * crowd * (2 - wobble), 0.5);
-    smooth(amb.motor.gain.gain, 0.07 * motor, 0.25);
+    smooth(amb.crowd.gain.gain, 0.045 * crowd * wobble, 0.5);
+    smooth(amb.crowd2.gain.gain, 0.016 * crowd * (2 - wobble), 0.5);
+    smooth(amb.motor.gain.gain, 0.04 * motor, 0.25);
     smooth(amb.motor.filter.frequency, 300 + motorPitch * 700, 0.3);
-    smooth(amb.rain.gain.gain, 0.04 * rain, 0.8);
+    smooth(amb.rain.gain.gain, 0.026 * rain, 0.8);
   }
 
   // A burst of noise through a band filter: breath, door hiss, keyboard click.
