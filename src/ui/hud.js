@@ -18,7 +18,7 @@ export function createHud(root, config, callbacks) {
   root.insertAdjacentHTML(
     'beforeend',
     `<div class="hud">
-      <div class="pill" id="hud-funds"></div>
+      <button class="pill funds-btn" id="hud-funds" type="button" aria-label="Open finances"></button>
       <div class="pill" id="hud-pop"></div>
       <button class="pill icon-btn" id="hud-menu" type="button" aria-label="Menu">${MENU_ICON}</button>
     </div>
@@ -60,6 +60,7 @@ export function createHud(root, config, callbacks) {
     layerMenu.hidden = true;
   });
   const fundsEl = root.querySelector('#hud-funds');
+  fundsEl.addEventListener('click', callbacks.onFinances);
   const popEl = root.querySelector('#hud-pop');
   const moodEl = root.querySelector('#hud-mood');
   const goalEl = root.querySelector('#hud-goal');

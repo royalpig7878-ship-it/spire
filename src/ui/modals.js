@@ -199,6 +199,39 @@ export function createModals(root) {
       });
     },
 
+    // The Finances screen (tap the funds at the top). `s` is finance.financeSummary.
+    showFinances(s, onClose) {
+      const money = (v) => (v < 0 ? '-' : '') + formatMoney(Math.abs(v));
+      const row = (label, value, cls = '') => `<div class="row ${cls}"><span>${label}</span><span>${value}</span></div>`;
+      const net = (v) => `<span class="${v >= 0 ? 'pos' : 'neg'}">${v >= 0 ? '+' : ''}${money(v)}</span>`;
+      const peak = Math.max(1, ...s.history.map((h) => Math.abs(h.net)));
+      const bars = s.history
+        .map((h) => `<div class="hbar" title="Y${h.year} Q${h.quarter}"><span class="fill ${h.net >= 0 ? 'pos' : 'neg'}" style="height:${Math.max(4, Math.round((Math.abs(h.net) / peak) * 46))}px"></span><small>Q${h.quarter}</small><small>${h.net >= 0 ? '+' : '-'}${formatMoney(Math.abs(h.net)).replace('$', '')}</small></div>`)
+        .join('');
+      const card = open(`
+        <h2>Finances</h2>
+        <div class="net ${s.funds >= 0 ? 'gain' : 'loss'}"><span>In the bank</span><span class="net-value">${money(s.funds)}</span></div>
+        <div class="section-label">This quarter so far (day ${Math.max(1, Math.ceil(s.daysIn))} of ${s.daysPerQuarter})</div>
+        ${row('Rent collected', money(s.soFar.rent))}
+        ${row('Shop sales (already paid)', money(s.soFar.sales))}
+        ${row('Upkeep and power so far', '-' + money(s.soFar.upkeep))}
+        ${row('So far', net(s.soFar.net), 'total')}
+        <div class="section-label">Expected by quarter end, at today's pace</div>
+        ${row('Rent (about ' + money(s.rentPerDay) + ' a day)', money(s.projected.rent))}
+        ${row('Sales', money(s.projected.sales))}
+        ${row('Upkeep and power', '-' + money(s.projected.upkeep))}
+        ${row('Net', net(s.projected.net), 'total')}
+        <div class="section-label">What you pay every day (${money(s.dailyTotal)} in all)</div>
+        ${s.bills.map((b) => row(b.label, money(b.perDay), 'muted')).join('')}
+        ${s.best.length ? `<div class="section-label">Best earners this quarter</div>${s.best.map((b) => row(`${b.name}${b.count ? ` x${b.count}` : ''}${b.percent !== null ? ` · ${b.percent}% full` : ''}`, money(b.amount))).join('')}` : ''}
+        ${bars ? `<div class="section-label">Past quarters (net)</div><div class="hbars">${bars}</div>` : '<p class="note">Past quarters will show here after your first quarter ends.</p>'}
+        <button class="secondary" id="modal-ok" type="button">Close</button>`);
+      card.querySelector('#modal-ok').addEventListener('click', () => {
+        close();
+        onClose();
+      });
+    },
+
     // Career goals checklist (opened from the Goals pill). `status` is modes.scenarioStatus.
     showGoals(status, onClose) {
       const num = (g, v) => (g.money ? formatMoney(v) : `${v.toLocaleString('en-US')}${g.suffix}`);
@@ -281,13 +314,12 @@ export function createModals(root) {
     },
 
     // Settings: segmented choices that apply right away. `onChange(key, value)`.
-    showSettings({ settings, onChange, onTutorial, onInstall, canInstall, onClose }) {
+    showSettings({ settings, onChange, onTutorial, onTestSound, onInstall, canInstall, onClose }) {
       const SEGMENTS = [
         { key: 'textScale', label: 'Text size', options: [['Small', 0.9], ['Normal', 1], ['Large', 1.15], ['Huge', 1.3]] },
         { key: 'sfx', label: 'Sound effects', options: [['On', true], ['Off', false]] },
         { key: 'music', label: 'Music', options: [['On', true], ['Off', false]] },
         { key: 'haptics', label: 'Vibration', options: [['On', true], ['Off', false]] },
-        { key: 'aim', label: 'Build aim (touch)', options: [['Under', 'under'], ['Close', 'close'], ['Above', 'above']] },
         { key: 'colorblind', label: 'Color-blind colors', options: [['Off', false], ['On', true]] },
         { key: 'graphics', label: 'Graphics', options: [['Auto', 'auto'], ['High', 'high'], ['Saver', 'low']] },
         { key: 'showFps', label: 'Frame rate', options: [['Hide', false], ['Show', true]] },
@@ -301,6 +333,8 @@ export function createModals(root) {
               .join('')}</div></div>`,
           ).join('')}
           <div class="setting"><span>Volume</span><input type="range" id="set-volume" min="0" max="1" step="0.05" value="${settings.volume}" /></div>
+          <button class="choice" id="set-test" type="button"><span>Test sound</span><small id="set-test-status"></small></button>
+          <p class="note">No sound on iPhone? Turn the silent switch (the little switch above the volume buttons) off, and turn the volume up.</p>
           <button class="choice" id="set-tutorial" type="button"><span>Replay the tutorial</span></button>
           ${canInstall ? '<button class="choice" id="set-install" type="button"><span>Install the app on this device</span></button>' : ''}
           <p class="note">On iPhone: tap Share, then "Add to Home Screen" to install.</p>
@@ -317,6 +351,11 @@ export function createModals(root) {
           });
         });
         card.querySelector('#set-volume').addEventListener('input', (e) => onChange('volume', Number(e.target.value)));
+        card.querySelector('#set-test').addEventListener('click', () => {
+          const state = onTestSound();
+          const label = { running: 'Playing. Did you hear it?', suspended: 'Blocked by the browser. Tap again.', 'not started': 'Not started. Tap again.', closed: 'Closed. Reload the page.' }[state] ?? state;
+          card.querySelector('#set-test-status').textContent = label;
+        });
         card.querySelector('#set-tutorial').addEventListener('click', () => {
           close();
           onTutorial();

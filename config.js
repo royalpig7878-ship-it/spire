@@ -89,7 +89,7 @@ export const config = {
   build: {
     // On touch screens the ghost is drawn this many screen pixels ABOVE
     // your fingertip so your finger doesn't hide it.
-    touchOffsetPx: 56,
+    touchOffsetPx: 28,
   },
 
   // --- Facility catalog: every building you can build (see catalog.js) ---
@@ -481,6 +481,11 @@ export const config = {
     // Below this zoom level facilities are drawn as flat blocks (faster,
     // and details would be too tiny to see anyway).
     detailMinZoom: 0.3,
+    // The Rich art layer (furniture, roof props, street trees, walking legs) needs
+    // a little more zoom than the basic details, because it is made of smaller things.
+    richMinZoom: 0.55,
+    // Furnished cutaway rooms (people working, sleeping, eating...) from this zoom up.
+    cutawayMinZoom: 0.1,
   },
 
   // ---- Game modes (M9) ----

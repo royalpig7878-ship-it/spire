@@ -71,7 +71,15 @@
       line-height: 24px;
       font-size: calc(16px * var(--text-scale));
     }
-    #hud-funds { color: var(--accent); }
+    #hud-funds { color: var(--accent); border: 0; font-weight: inherit; }
+    .hbars { display: flex; gap: 6px; align-items: flex-end; padding: 4px 0 8px; }
+    .hbar { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 2px; min-height: 80px; }
+    .hbar small { font-size: calc(10.5px * var(--text-scale)); color: #9fb0c0; line-height: 1.1; }
+    .hbar .fill { display: block; width: 100%; border-radius: 4px 4px 0 0; }
+    .fill.pos { background: #4fa36a; }
+    .fill.neg { background: #d9534f; }
+    .pos { color: #7be0a0; }
+    .neg { color: #ff9a9a; }
     /* In debt: red AND a "!" badge, so it never relies on color alone. */
     #hud-funds.debt { color: #ff8a8a; }
     #hud-funds.debt::before {
@@ -564,6 +572,24 @@
       gap: 3px;
     }
     .item.active { border-color: var(--accent); background: #3a4c60; }
+    /* Star-rating dividers in the build lists */
+    .star-label { flex: 0 0 auto; align-self: stretch; min-width: 62px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 2px; padding: 0 8px; border-left: 2px dashed #5b6b7b; color: var(--accent); }
+    .star-label:first-child { border-left: 0; }
+    .star-label .stars { font-size: calc(13px * var(--text-scale)); letter-spacing: 1px; }
+    .star-label .tier { font-size: calc(11px * var(--text-scale)); color: #b8c4d0; text-align: center; }
+    .star-label.locked { opacity: 0.65; }
+    /* Needs tab cards */
+    .item.need { align-items: flex-start; text-align: left; min-width: 170px; max-width: 220px; gap: 2px; border-left: 5px solid #5aa9e6; }
+    .item.need.sev3 { border-left-color: #e0503c; }
+    .item.need.sev2 { border-left-color: #f0a830; }
+    .item.need .tag { font-size: calc(10.5px * var(--text-scale)); font-weight: 800; letter-spacing: 0.6px; color: #9fb0c0; }
+    .item.need.sev3 .tag { color: #ff9a8a; }
+    .item.need.sev2 .tag { color: #ffd08a; }
+    .item.need .t { font-size: calc(13px * var(--text-scale)); font-weight: 700; line-height: 1.2; }
+    .item.need .d { font-size: calc(11.5px * var(--text-scale)); color: #b8c4d0; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .item.need.none { border-left-color: #4fa36a; }
+    .tab .badge { display: inline-block; margin-left: 6px; min-width: 18px; padding: 0 6px; border-radius: 10px; background: #e0503c; color: #fff; font-size: 12px; font-weight: 800; line-height: 18px; }
+    .tab .badge.amber { background: #e29a1f; color: #1d2733; }
     .item .name { font-size: calc(13px * var(--text-scale)); }
     .item .cost { font-size: calc(12px * var(--text-scale)); color: var(--accent); }
     /* Unaffordable: dimmed AND the price gets a strike line (not color only). */

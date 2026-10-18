@@ -10,6 +10,8 @@
 //   cafe      - green, striped scalloped awning and a coffee cup
 
 import { mixToHex } from './color.js';
+import { richFacility } from './detail.js';
+import { drawRoom, drawHall, ROOM_KINDS } from './rooms.js';
 
 // Warning triangle shown on facilities that no stairs or elevator reaches.
 // (Shape + "!" so it is readable without relying on color.)
@@ -282,7 +284,7 @@ export function drawIcon(ctx, name, cx, cy, s, color) {
 }
 
 // Darkens a "#rrggbb" color by `amount` (0..1) for trims and shadows.
-function shade(hex, amount) {
+export function shade(hex, amount) {
   const n = parseInt(hex.slice(1), 16);
   const r = Math.round(((n >> 16) & 255) * (1 - amount));
   const g = Math.round(((n >> 8) & 255) * (1 - amount));
@@ -311,6 +313,15 @@ export function drawFacility(ctx, typeId, def, x, y, w, h, cellPx, detailed, loo
 
   // The top tile of the Crown is drawn as a crown shape, with sky showing between the points.
   const crownTop = def.style === 'crown' && (look.tileIndex ?? 0) === (look.tileTotal ?? 1) - 1;
+  const kind = def.style ?? typeId; // facilities of one style share a drawing
+
+  // Cutaway view (at every zoom): look straight into the furnished room instead of at its facade.
+  // The room pictures are cached, so this is cheap even when zoomed far out.
+  if (look.cutaway && ROOM_KINDS.has(kind) && !def.transport && !crownTop) {
+    drawRoom(ctx, kind, typeId, def, x, y, w, h, look);
+    return;
+  }
+
   if (!(crownTop && detailed)) {
     ctx.fillStyle = color;
     roundedRectPath(ctx, x, y, w, h, h * 0.12);
@@ -320,7 +331,9 @@ export function drawFacility(ctx, typeId, def, x, y, w, h, cellPx, detailed, loo
 
   const dark = shade(color, 0.25);
   const cells = Math.max(1, Math.round(w / cellPx));
-  const kind = def.style ?? typeId; // facilities of one style share a drawing
+
+  // Stairs and escalators stand inside a hall of their own in the cutaway view.
+  if (look.cutaway && (typeId === 'stairs' || typeId === 'escalator')) drawHall(ctx, x, y, w, h, look);
 
   if (kind === 'office') {
     ctx.fillStyle = dark; // roof parapet
@@ -608,4 +621,7 @@ export function drawFacility(ctx, typeId, def, x, y, w, h, cellPx, detailed, loo
       ctx.fillRect(dx + doorW * 0.53, y + h * 0.3, doorW * 0.41, h * 0.54);
     }
   }
+
+  // Rich art: furniture, curtains, signs and other small details (src/render/detail.js).
+  if (look.rich) richFacility(ctx, kind, typeId, def, x, y, w, h, cellPx, look, { color, accent, dark });
 }

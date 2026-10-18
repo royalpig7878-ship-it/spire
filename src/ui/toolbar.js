@@ -24,6 +24,9 @@ export function createToolbar(root, config, callbacks) {
   let tool = { kind: 'pan', typeId: null };
   let funds = 0;
   let affordKey = ''; // which items were affordable at the last render
+  let needs = []; // what the tower needs right now (see sim/needs.js)
+  let needsKey = '';
+  let needHint = ''; // full text of the need the player last tapped
 
   root.insertAdjacentHTML(
     'beforeend',
@@ -66,6 +69,7 @@ export function createToolbar(root, config, callbacks) {
   }
 
   function selectTool(next) {
+    needHint = '';
     const same = tool.kind === next.kind && tool.typeId === next.typeId;
     tool = same ? { kind: 'pan', typeId: null } : next;
     callbacks.onToolChange(tool);
@@ -80,8 +84,11 @@ export function createToolbar(root, config, callbacks) {
     renderedCategory = category;
     tabsEl.innerHTML = '';
     for (const cat of CATEGORIES) {
-      const b = makeButton('tab' + (cat.id === category ? ' active' : ''), cat.label, () => {
+      const urgent = cat.id === 'needs' ? needs.filter((n) => n.severity >= 2) : [];
+      const badge = urgent.length ? `<span class="badge${urgent.some((n) => n.severity === 3) ? '' : ' amber'}">${urgent.length}</span>` : '';
+      const b = makeButton('tab' + (cat.id === category ? ' active' : ''), cat.label + badge, () => {
         category = cat.id;
+        needHint = '';
         render();
       });
       tabsEl.appendChild(b);
@@ -107,6 +114,28 @@ export function createToolbar(root, config, callbacks) {
           render();
         }),
       );
+    } else if (category === 'needs') {
+      if (!needs.length) {
+        itemsEl.appendChild(makeButton('item need none', '<span class="t">All good</span><span class="d">Nothing needs your attention right now.</span>', () => {}));
+      }
+      const TAGS = { 3: 'URGENT', 2: 'IMPORTANT', 1: 'TIP' };
+      for (const need of needs) {
+        itemsEl.appendChild(
+          makeButton(
+            `item need sev${need.severity}`,
+            `<span class="tag">${need.severity === 3 ? '&#9888; ' : ''}${TAGS[need.severity]}</span><span class="t">${need.title}</span><span class="d">${need.detail}</span>`,
+            () => {
+              if (need.build) {
+                category = config.facilities[need.build].category;
+                selectTool({ kind: 'build', typeId: need.build });
+              }
+              callbacks.onNeed(need);
+              needHint = need.detail;
+              render();
+            },
+          ),
+        );
+      }
     } else if (category === 'districts') {
       const dc = config.districts;
       for (const [id, theme] of Object.entries(dc.themes)) {
@@ -130,7 +159,20 @@ export function createToolbar(root, config, callbacks) {
         ),
       );
     } else {
-      for (const def of facilitiesInCategory(config, category)) {
+      // Laid out by the star rating that unlocks each building, then by price (not alphabetically),
+      // with a little divider where each rating's group starts.
+      const defs = facilitiesInCategory(config, category).sort((a, b) => unlockTier(config, a.id) - unlockTier(config, b.id) || a.cost - b.cost);
+      let groupStars = 0;
+      for (const def of defs) {
+        const groupTier = unlockTier(config, def.id);
+        if (groupTier !== groupStars) {
+          groupStars = groupTier;
+          const locked = groupTier > callbacks.getTier() + 1;
+          const label = document.createElement('div');
+          label.className = 'star-label' + (locked ? ' locked' : '');
+          label.innerHTML = `<span class="stars">${'&#9733;'.repeat(groupTier)}</span><span class="tier">${locked ? '&#128274; ' : ''}${config.tiers[groupTier - 1].name}</span>`;
+          itemsEl.appendChild(label);
+        }
         const selected = tool.kind === 'build' && tool.typeId === def.id;
         const poor = funds < def.cost;
         // Buildings unlock with your rating: show a lock (and the star level) instead of a price.
@@ -152,7 +194,9 @@ export function createToolbar(root, config, callbacks) {
     tabsEl.scrollLeft = tabsScroll;
     itemsEl.scrollLeft = itemsScroll;
 
-    if (tool.kind === 'district') {
+    if (needHint && category === 'needs') {
+      hintEl.textContent = needHint;
+    } else if (tool.kind === 'district') {
       hintEl.textContent =
         tool.typeId === 'clear'
           ? 'Touch a themed band of floors and let go to remove its theme.'
@@ -181,6 +225,14 @@ export function createToolbar(root, config, callbacks) {
 
   return {
     toast,
+    // Called every second or two with the fresh list from computeNeeds.
+    setNeeds(list) {
+      const key = list.map((n) => `${n.id}:${n.severity}:${n.title}`).join('|');
+      if (key === needsKey) return;
+      needsKey = key;
+      needs = list;
+      render();
+    },
     // Called every frame; only rebuilds the buttons when which items are
     // affordable has actually changed.
     update(newFunds) {

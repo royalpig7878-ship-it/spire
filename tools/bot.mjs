@@ -35,7 +35,7 @@ function fullness() {
   return rentable.reduce((s, f) => s + Math.min(1, occupancyOf(game, config, f)), 0) / rentable.length;
 }
 function step() {
-  const reserve = dailyUpkeep(tw, config) * 10;
+  const reserve = dailyUpkeep(tw, config) * Number(process.env.RESERVE ?? 10);
   if (tw.funds < reserve + 3000 || fullness() < 0.7) return;
   // elevator up to the current tallest floor + 4 (re-place taller when needed isn't possible, so build tall early)
   if (shaftTop < 0) { for (const h of [7, 5, 3]) if (tryPlace('stairs', 0, 4, h)) { shaftTop = h - 1; break; } return; }

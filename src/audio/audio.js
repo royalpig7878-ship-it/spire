@@ -173,10 +173,53 @@ export function createAudio(settings) {
     musicTimer = null;
   }
 
+  // iPhones mute web audio when the silent switch is on, unless the page counts as "playing
+  // media". A looping silent <audio> element (started inside a tap) does exactly that.
+  let keepAlive = null;
+  function startKeepAlive() {
+    try {
+      if (navigator.audioSession) navigator.audioSession.type = 'playback'; // newer Safari
+    } catch {
+      // not available: fine
+    }
+    if (keepAlive) {
+      if (keepAlive.paused) keepAlive.play().catch(() => {});
+      return;
+    }
+    try {
+      // half a second of silence as a tiny WAV file, made on the spot
+      const rate = 8000;
+      const samples = rate / 2;
+      const buf = new ArrayBuffer(44 + samples);
+      const v = new DataView(buf);
+      const str = (o, s) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+      str(0, 'RIFF');
+      v.setUint32(4, 36 + samples, true);
+      str(8, 'WAVEfmt ');
+      v.setUint32(16, 16, true);
+      v.setUint16(20, 1, true);
+      v.setUint16(22, 1, true);
+      v.setUint32(24, rate, true);
+      v.setUint32(28, rate, true);
+      v.setUint16(32, 1, true);
+      v.setUint16(34, 8, true);
+      str(36, 'data');
+      v.setUint32(40, samples, true);
+      new Uint8Array(buf, 44).fill(128); // 128 = silence in 8-bit audio
+      keepAlive = new Audio(URL.createObjectURL(new Blob([buf], { type: 'audio/wav' })));
+      keepAlive.loop = true;
+      keepAlive.setAttribute('playsinline', '');
+      keepAlive.play().catch(() => {});
+    } catch {
+      keepAlive = null;
+    }
+  }
+
   return {
     // Call from a tap/click handler: browsers need that before allowing sound.
     // iPhones also want a (silent) sound played inside the touch to wake audio up.
     unlock() {
+      startKeepAlive();
       if (!ensure()) return;
       try {
         const src = ctx.createBufferSource();
@@ -189,6 +232,8 @@ export function createAudio(settings) {
       applySettings();
     },
     isRunning: () => Boolean(ctx) && ctx.state === 'running',
+    // For the Settings test button: what the browser says about our audio.
+    status: () => (ctx ? ctx.state : 'not started'),
     play,
     applySettings,
     setDarkness(value) {

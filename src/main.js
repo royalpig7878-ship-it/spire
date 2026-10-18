@@ -29,6 +29,8 @@ import { saveGame, loadGame, hasSave } from './sim/save.js';
 import { scenarioStatus, scenarioById } from './sim/modes.js';
 import { careerRecords, recordResult } from './sim/career.js';
 import { createTitle } from './ui/title.js';
+import { computeNeeds } from './sim/needs.js';
+import { financeSummary } from './sim/finance.js';
 import { createInputController } from './ui/input.js';
 import { createToolbar } from './ui/toolbar.js';
 import { createHud } from './ui/hud.js';
@@ -78,6 +80,10 @@ const ui = {
   lowDetail: false, // battery-saver graphics
   pops: new Map(), // facility id -> time it was built (for the little pop animation)
   particles: [], // dust and debris
+  pulse: null, // { floor, cell, width, height, until }: a highlight ring from the Needs tab
+  rich: true, // the full art layer (off in battery saver)
+  cutaway: true, // furnished cutaway rooms (off in battery saver)
+  roofCache: {}, // which roofs are open sky (see render/detail.js)
 };
 
 // ---- Sound, vibration, accessibility and graphics settings ----
@@ -107,7 +113,7 @@ onSettingChange(applySetting);
 // Browsers allow sound only after a touch: start the audio on the first one.
 // iPhone only counts the end of a touch (touchend/click) as permission, Android
 // accepts the start, so listen to all of them until the audio is really running.
-const UNLOCK_EVENTS = ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown'];
+const UNLOCK_EVENTS = ['pointerdown', 'pointerup', 'touchstart', 'touchend', 'click', 'keydown'];
 function tryUnlockAudio() {
   audio.unlock();
   if (audio.isRunning()) UNLOCK_EVENTS.forEach((name) => document.removeEventListener(name, tryUnlockAudio, true));
@@ -124,6 +130,14 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden) audio.suspend();
   else audio.resume();
 });
+
+// Settings > Test sound: wake the audio, play a chime, and report what the browser says.
+function testSound() {
+  audio.unlock();
+  audio.play('good', 0);
+  setTimeout(() => audio.play('ding', 0), 220);
+  return audio.status();
+}
 
 // "Install the app" (Android/desktop browsers offer this when the game is hosted over https).
 let installEvent = null;
@@ -148,6 +162,18 @@ const toolbar = createToolbar(uiRoot, config, {
   },
   getTier: () => game.tower.tier,
   onLockedTap: (message) => toolbar.toast(message),
+  // A Needs card was tapped: fly to the problem, ring it, and show the helpful layer.
+  onNeed(need) {
+    if (need.target) {
+      const { cell, width, floor, height = 1 } = need.target;
+      camera.x = (cell + width / 2) * config.grid.cellWidth;
+      camera.y = -(floor + height / 2) * config.grid.floorHeight;
+      camera.zoom = Math.max(camera.zoom, 0.9);
+      ui.pulse = { floor, cell, width, height, until: performance.now() + 4000 };
+    }
+    if (need.overlay) ui.overlay = need.overlay;
+    if (need.openProgress) openProgress();
+  },
 });
 const modals = createModals(uiRoot);
 
@@ -197,25 +223,34 @@ const infoPanel = createInfoPanel(uiRoot, config, {
     toolbar.toast(result.ok ? `Sprinklers installed  -${formatMoney(result.cost)}` : result.reason);
   },
 });
+// The Finances screen (from the funds at the top, or the menu).
+function openFinances() {
+  modals.showFinances(financeSummary(game, config), () => {});
+}
+
+// The rating / progress screen (from the star badge, or a Needs card).
+function openProgress() {
+  ui.sawProgress = true;
+  const crownNeed = config.crown.requiresPeople;
+  const people = peopleCount(game, config);
+  modals.showProgress({
+    tierName: config.tiers[game.tower.tier].name,
+    stars: game.tower.tier + 1,
+    plot: game.tower.plot,
+    status: tierStatus(game, config),
+    inspection: game.progress.inspection,
+    won: game.progress.won,
+    crown: { people, need: crownNeed, peopleOk: people >= crownNeed },
+    onClose() {},
+  });
+}
+
 const hud = createHud(uiRoot, config, {
   onSpeed(speed) {
     game.speed = speed;
   },
-  onProgress() {
-    ui.sawProgress = true;
-    const crownNeed = config.crown.requiresPeople;
-    const people = peopleCount(game, config);
-    modals.showProgress({
-      tierName: config.tiers[game.tower.tier].name,
-      stars: game.tower.tier + 1,
-      plot: game.tower.plot,
-      status: tierStatus(game, config),
-      inspection: game.progress.inspection,
-      won: game.progress.won,
-      crown: { people, need: crownNeed, peopleOk: people >= crownNeed },
-      onClose() {},
-    });
-  },
+  onProgress: openProgress,
+  onFinances: openFinances,
   onGoals() {
     const status = scenarioStatus(game, config);
     if (status) modals.showGoals(status, () => {});
@@ -225,10 +260,12 @@ const hud = createHud(uiRoot, config, {
   },
   onMenu() {
     modals.showMenu({
+      onFinances: openFinances,
       onSettings() {
         modals.showSettings({
           settings,
           onChange: (key, value) => updateSetting(key, value),
+      onTestSound: testSound,
           // The tutorial teaches on an empty plot, so replaying it starts a new tower.
           onTutorial: () => {
             const startIt = () => startFreshGame({ kind: 'sandbox' }, true);
@@ -303,6 +340,7 @@ const title = createTitle(uiRoot, config, {
     modals.showSettings({
       settings,
       onChange: (key, value) => updateSetting(key, value),
+      onTestSound: testSound,
       onTutorial: () => {
         title.hide();
         startFreshGame({ kind: 'sandbox' }, true);
@@ -413,9 +451,7 @@ let dragAnchor = null; // where a stairs/elevator drag began: { floor, cell }
 function updatePreview(world, pointerType, starting = false) {
   const { cellWidth, floorHeight } = config.grid;
   // On touch screens, aim a little above the fingertip so it isn't hidden.
-  // (The Build aim setting scales that: Under = right at the finger, Close = half, Above = full.)
-  const aimScale = { under: 0, close: 0.5, above: 1 }[settings.aim] ?? 1;
-  const lift = pointerType === 'touch' ? (config.build.touchOffsetPx * aimScale) / camera.zoom : 0;
+  const lift = pointerType === 'touch' ? config.build.touchOffsetPx / camera.zoom : 0;
   const floor = Math.floor(-(world.y - lift) / floorHeight);
   const tower = game.tower;
 
@@ -687,6 +723,10 @@ const loop = createGameLoop({
     audio.setDarkness(skyAt(hourOfDay(game.clock), config).dark);
     storyCard.refresh();
     tutorial.tick();
+    if (nowMs - needsAt > 1500 && !title.isOpen()) {
+      needsAt = nowMs;
+      toolbar.setNeeds(computeNeeds(game, config));
+    }
     hud.update({
       funds: game.tower.funds,
       topFloor: tallestFloor(game.tower),
@@ -706,6 +746,10 @@ const loop = createGameLoop({
     });
     toolbar.update(game.tower.funds);
     infoPanel.refresh();
+    // The full art (cutaway rooms, roof props, street life, buried treasure) is always on,
+    // except in Graphics > Saver (or when Auto finds the phone is struggling).
+    ui.rich = !ui.lowDetail;
+    ui.cutaway = !ui.lowDetail;
     renderWorld(ctx, canvasWidthCss, canvasHeightCss, camera, config, game, ui, smooth);
   },
 });
@@ -718,6 +762,8 @@ function goalPill() {
   const done = s.allMet;
   return { text: s.ended ? `Goals ${met}/${s.goals.length}` : `Goals ${met}/${s.goals.length} · ${s.daysLeft}d`, done };
 }
+
+let needsAt = 0; // when the Needs list was last refreshed
 
 // Frame timing bookkeeping (see the render function)
 let lastFrameMs = performance.now();

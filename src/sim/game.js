@@ -10,7 +10,7 @@
 import { createTower, canDemolish, demolish, buildCost } from './tower.js';
 import { createElevatorSystem, updateElevators } from './elevators.js';
 import { createClock, calendar, dayIndex, MINUTES_PER_DAY } from './clock.js';
-import { createEconomy, dailyUpkeep, quarterlyRent, recordDailyOccupancy } from './economy.js';
+import { createEconomy, dailyRent, dailyUpkeep, quarterlyRent, recordDailyOccupancy } from './economy.js';
 import { createTenantSystem, updateTenants, dailyTenantUpdate, occupancyOf } from './tenants.js';
 import { createServices, dailyServicesUpdate, powerStatus } from './services.js';
 import { districtBonus } from './districts.js';
@@ -96,16 +96,19 @@ function onNewDay(game, config) {
   tower.funds += serviceIncome;
   economy.salesThisQuarter += serviceIncome;
   recordDailyOccupancy(economy, tower, config, (f) => occupancyOf(game, config, f));
+  // Rent comes in every day (a sixth of the quarter's rent), just as upkeep goes out every day.
+  const rentToday = dailyRent(tower, config, (f) => districtBonus(tower, config, f).rentMult, (f) => occupancyOf(game, config, f));
+  tower.funds += rentToday;
+  economy.rentThisQuarter += rentToday;
   dailyTenantUpdate(game, config);
 
-  // 2. If a quarter just ended, collect rent and prepare the report.
+  // 2. If a quarter just ended, prepare the report (the rent itself was paid day by day).
   const dpq = config.time.daysPerQuarter;
   const newDay0 = dayIndex(clock);
   if (newDay0 > 0 && newDay0 % dpq === 0) {
     const endMinute = clock.minutes;
     const rent = quarterlyRent(tower, config, economy, (f) => districtBonus(tower, config, f).rentMult);
-    const fundsBefore = tower.funds;
-    tower.funds += rent.total;
+    const fundsBefore = tower.funds - rent.total; // where funds stood without this quarter's rent
 
     // Calendar of the quarter that just finished (one minute ago).
     const finished = calendar({ minutes: endMinute - 1 }, config);
@@ -124,7 +127,13 @@ function onNewDay(game, config) {
         fundsAfter: tower.funds,
       },
     });
+    // Remember the quarter for the Finances screen (the last dozen)
+    economy.history = [
+      ...(economy.history ?? []),
+      { year: finished.year, quarter: finished.quarter, income: rent.total, sales: economy.salesThisQuarter, upkeep: economy.upkeepThisQuarter, net: rent.total + economy.salesThisQuarter - economy.upkeepThisQuarter, funds: tower.funds },
+    ].slice(-12);
     economy.upkeepThisQuarter = 0;
+    economy.rentThisQuarter = 0;
     economy.salesThisQuarter = 0;
     economy.salesByFacility = {};
     economy.occupancyDays = {};

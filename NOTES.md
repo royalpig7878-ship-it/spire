@@ -82,6 +82,50 @@ milestone, once you've confirmed it works — never before.
 
 ## Milestone log
 
+- **M10 — Detailed art, cutaway rooms and the Needs tab.**
+  **Cutaway** (always on): rooms are drawn like a dollhouse
+  cross-section with furniture, and people do little things inside them
+  depending on the time of day: workers type at desks and fetch water,
+  residents sleep, cook, and watch TV, shoppers browse, diners eat, people
+  run on treadmills and watch films. Empty rooms go dark at night. Rooms are
+  painted once into small cached pictures, so it is cheap
+  (`src/render/rooms.js`, `poses.js`). Cutaway needs zoom of
+  at every zoom level. Every room has an interior: offices, homes, hotel
+  rooms, shops, cafés, restaurants, cinema, clinic, gym, security,
+  maintenance, recycling, substation, garage, the lobby, sky lobby, atrium
+  and the Crown's hall, and stairs and escalators stand in a hall of their
+  own. (`world.cutawayMinZoom` in `config.js` sets the lowest zoom.)
+  **Underground:** basement rooms get an earthy, murkier tint, and the dirt
+  gets darker with depth, in layers, with things buried in it: rocks,
+  roots, worms, bones, fossils, old pipes, gems, gold, coins, bottles,
+  treasure chests (deep down) and a mole that pops up now and then.
+  **Sound on iPhone:** the silent switch mutes web audio, so the game plays a
+  silent looping clip to count as media. Settings > **Test sound** plays a
+  chime and reports whether the browser is blocking audio.
+  **Rent is now paid every day** (a sixth of the quarter's rent each midnight,
+  by how full each unit was), so money comes in as steadily as bills go out;
+  the quarterly report is a summary. **Finances:** tap your funds at the top (or Menu > Finances) any time to
+  see this quarter so far, a projection for quarter end, the daily bills by
+  kind of building, your best earners, and the last quarters' net.
+  **Needs tab** (next to Tools): a ranked list of what your tower needs
+  (fires, unreachable rooms, long lifts waits, stressed people, trash, power,
+  missing services, empty units, the next rating). A red badge counts the
+  urgent ones. Tap a card to fly to the problem, ring it, and switch on the
+  helpful layer; build suggestions select that building (`src/sim/needs.js`).
+  A new **Rich** art layer (`src/render/detail.js`),
+  always on (Settings > Graphics > Saver turns it off for slow phones). Rich adds:
+  desks and glowing monitors in offices, curtains, lamps and balcony plants
+  in apartments, goods and a neon sign in shops, door plates in hotels,
+  vents and hazard stripes on services, a checkered lobby floor and a clock
+  over the front door; roof props (air-conditioners, blinking antennas,
+  water tanks, dishes, rooftop gardens); street lamps that light up at
+  night, trees that change with the seasons and bushes; a warm window halo
+  after dark; people with legs, swinging arms, hair and (for workers) a
+  briefcase; and elevator cars with a ceiling light, handrail and a floor
+  display. Rich switches itself off in battery-saver graphics and when you
+  zoom out (below `world.richMinZoom` in `config.js`), so big towers stay
+  fast. It also works on top of the colour-blind palette.
+
 - **M9 — Sandbox and Career.** Every visit now opens a **title screen**:
   Continue, Career, Sandbox, Settings. The menu's old "New game" is now
   "Main menu". **Sandbox** is free play with your own rules: money

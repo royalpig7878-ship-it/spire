@@ -16,7 +16,6 @@ export const DEFAULTS = {
   colorblind: false, // color-blind friendly palette
   graphics: 'auto', // 'auto' | 'high' | 'low' (battery saver)
   showFps: false, // little frame-rate readout
-  aim: 'close', // where a build lands relative to the fingertip: 'under' | 'close' | 'above'
   sandbox: { money: 'standard', tier: 'normal', events: 'on' }, // last Sandbox choices
   toolbarCollapsed: false, // the bottom build bar is folded away
   tutorialDone: false,

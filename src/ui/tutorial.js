@@ -37,7 +37,7 @@ const STEPS = [
     done: (g) => has(g, 'apartment'),
   },
   {
-    text: 'Tap 2x or 4x to speed up time. Tenants will start moving in over the next game hours. Rent arrives each quarter.',
+    text: 'Tap 2x or 4x to speed up time. Tenants will start moving in over the next game hours. Rent arrives every day, and the bills go out every day.',
     pulse: byText('.speed-btn', '4x'),
     done: (g) => g.tenants.list.length > 0,
   },

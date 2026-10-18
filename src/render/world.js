@@ -17,6 +17,7 @@ import {
 import { drawWeather } from './weather.js';
 import { drawSkyLife, drawFlyers } from './ambient.js';
 import { drawParticles } from './particles.js';
+import { drawDirt, drawGlow, drawRoofProps, drawStreetProps, roofIds } from './detail.js';
 import { calendar } from '../sim/clock.js';
 import { bandRange } from '../sim/districts.js';
 import { trashLevel } from '../sim/services.js';
@@ -25,7 +26,7 @@ import { drawTenants } from './tenants.js';
 import { drawSky } from './sky.js';
 import { mixToHex } from './color.js';
 import { drawOverlay } from './overlays.js';
-import { isConnected } from '../sim/tower.js';
+import { isConnected, facilityAt } from '../sim/tower.js';
 import { hourOfDay } from '../sim/clock.js';
 import { formatMoney } from '../data/format.js';
 
@@ -47,6 +48,11 @@ export function renderWorld(ctx, W, H, camera, config, game, ui, alpha) {
   const cellPx = cellWidth * zoom;
   const floorPx = floorHeight * zoom;
 
+  // Rich art (extra details) needs the setting on, no battery saver, and a close-enough zoom.
+  const rich = Boolean(ui.rich) && zoom >= world.richMinZoom;
+  // Cutaway: rooms are drawn as furnished cross-sections with people doing things.
+  const cutaway = Boolean(ui.cutaway) && zoom >= world.cutawayMinZoom;
+
   // --- Sky (follows the game clock) ---
   const skyState = drawSky(ctx, W, H, hour, config);
   const nightDim = Math.min(1, skyState.dark * config.sky.nightDimStrength);
@@ -63,6 +69,10 @@ export function renderWorld(ctx, W, H, camera, config, game, ui, alpha) {
     const grass = game.weather.kind === 'snow' ? world.seasonGrass[3] : world.seasonGrass[seasonIndex] ?? world.grassColor;
     ctx.fillStyle = mixToHex(grass, config.sky.nightTint, nightDim);
     ctx.fillRect(0, groundY, W, world.grassHeight * zoom);
+    // Layers of earth with things buried in them (Rich art; zoomed in enough to see them)
+    if (ui.rich && zoom >= 0.25) drawDirt(ctx, W, H, camera, config, groundY, skyState.dark, performance.now() / 1000);
+    // Lamp posts, trees and bushes (Rich art)
+    if (rich) drawStreetProps(ctx, W, camera, config, tower, facilityAt, groundY, skyState.dark, seasonIndex, game.weather.kind === 'snow');
   }
 
   // --- Plot outline (dashed) so you can see where you may build ---
@@ -175,6 +185,12 @@ export function renderWorld(ctx, W, H, camera, config, game, ui, alpha) {
       isStop: true,
       express: def.stopMode === 'hubs',
       tileTotal: f.height,
+      rich,
+      cutaway,
+      id: f.id,
+      present: tenants.present.get(f.id) ?? 0,
+      hour,
+      seconds,
     };
     // A newly built facility "pops" up from its base with a little bounce.
     let popped = false;
@@ -195,12 +211,17 @@ export function renderWorld(ctx, W, H, camera, config, game, ui, alpha) {
         popped = true;
       }
     }
+    if (rich && lit > 0 && skyState.dark > 0.3) drawGlow(ctx, x, slotY(f.floor + f.height - 1), w, floorPx * f.height, skyState.dark, lit);
     for (let i = 0; i < f.height; i++) {
       const y = slotY(f.floor + i);
       if (y > H || y + floorPx < 0) continue;
       look.tileIndex = i;
+      look.floor = f.floor + i;
       look.isStop = shaft ? shaft.stops.has(f.floor + i) : true; // shafts have a door only at stops
       drawFacility(ctx, f.type, def, x, y, w, floorPx, cellPx, detailed, look);
+    }
+    if (rich && !def.transport && roofIds(tower, facilityAt, ui.roofCache).has(f.id)) {
+      drawRoofProps(ctx, f, def, x, slotY(f.floor + f.height - 1), w, floorPx, cellPx, skyState.dark, seconds);
     }
     if (popped) ctx.restore();
     // Trouble on the tile: fire, pests, repairs, and (good news) sprinklers.
@@ -222,6 +243,25 @@ export function renderWorld(ctx, W, H, camera, config, game, ui, alpha) {
     }
   }
 
+  // --- A ring around the place a Needs card pointed at ---
+  if (ui.pulse) {
+    const left = ui.pulse.until - performance.now();
+    if (left <= 0) ui.pulse = null;
+    else {
+      const p = ui.pulse;
+      const beat = 0.5 + 0.5 * Math.sin(performance.now() / 150);
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, left / 600);
+      ctx.strokeStyle = '#ffd166';
+      ctx.lineWidth = 3 + beat * 3;
+      ctx.shadowColor = 'rgba(255,209,102,0.9)';
+      ctx.shadowBlur = 10 + beat * 10;
+      roundedRectPath(ctx, slotX(p.cell) - 3, slotY(p.floor + p.height - 1) - 3, p.width * cellPx + 6, p.height * floorPx + 6, 8);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
   // --- Dust and debris from building and demolishing ---
   drawParticles(ctx, W, H, camera, ui.particles);
 
@@ -229,10 +269,10 @@ export function renderWorld(ctx, W, H, camera, config, game, ui, alpha) {
   if (ui.overlay !== 'off') drawOverlay(ctx, W, H, camera, config, game, ui.overlay);
 
   // --- People walking, climbing, relaxing at their desks ---
-  drawTenants(ctx, W, H, camera, config, tenants, ui.storyId);
+  drawTenants(ctx, W, H, camera, config, tenants, ui.storyId, rich, cutaway ? { tower, hour } : null);
 
   // --- Elevator cars, call buttons and waiting riders ---
-  drawElevators(ctx, W, H, camera, config, elevators, alpha);
+  drawElevators(ctx, W, H, camera, config, elevators, alpha, rich);
 
   // --- A power dip darkens the whole tower ---
   if (game.incidents.outage) {

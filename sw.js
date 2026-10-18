@@ -5,19 +5,19 @@
 // saved copy right away, and quietly fetch a fresh copy for next time.
 // Browsers only allow service workers over https (or localhost).
 
-const CACHE = 'spire-v9';
+const CACHE = 'spire-v11';
 const CORE = [
   './', './index.html', './manifest.json', './config.js', './catalog.js',
   './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png',
   './src/main.js',
   './src/audio/audio.js',
   './src/data/facilities.js', './src/data/format.js', './src/data/people.js',
-  './src/render/ambient.js', './src/render/color.js', './src/render/elevators.js', './src/render/facilities.js',
+  './src/render/ambient.js', './src/render/detail.js', './src/render/rooms.js', './src/render/poses.js', './src/render/color.js', './src/render/elevators.js', './src/render/facilities.js',
   './src/render/figures.js', './src/render/overlays.js', './src/render/palette.js', './src/render/particles.js',
   './src/render/sky.js', './src/render/tenants.js', './src/render/weather.js', './src/render/world.js',
   './src/sim/clock.js', './src/sim/connectivity.js', './src/sim/diagnostics.js', './src/sim/districts.js',
   './src/sim/economy.js', './src/sim/elevators.js', './src/sim/game.js', './src/sim/incidents.js',
-  './src/sim/loop.js', './src/sim/modes.js', './src/sim/career.js', './src/sim/progress.js', './src/sim/routing.js', './src/sim/save.js',
+  './src/sim/loop.js', './src/sim/modes.js', './src/sim/needs.js', './src/sim/career.js', './src/sim/progress.js', './src/sim/routing.js', './src/sim/save.js',
   './src/sim/services.js', './src/sim/sfx.js', './src/sim/shafts.js', './src/sim/stories.js',
   './src/sim/tenants.js', './src/sim/tower.js', './src/sim/weather.js',
   './src/ui/alerts.js', './src/ui/haptics.js', './src/ui/hud.js', './src/ui/infopanel.js', './src/ui/input.js',

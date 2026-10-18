@@ -10,9 +10,11 @@ export function createEconomy() {
   return {
     upkeepThisQuarter: 0, // running total, shown on the quarterly report
     salesThisQuarter: 0, // money customers spent this quarter (already in funds)
+    rentThisQuarter: 0, // rent already paid to you this quarter (it arrives every day)
     salesByFacility: {}, // facility id -> sales this quarter (for the income overlay)
     occupancyDays: {}, // facility id -> days of "fully occupied" earned this quarter
     debtDays: 0, // consecutive days spent below $0
+    history: [], // the last quarters: { year, quarter, income, sales, upkeep, net, funds }
   };
 }
 
@@ -38,6 +40,22 @@ export function recordDailyOccupancy(economy, tower, config, occupancyOf) {
   }
 }
 
+// Rent for ONE day: each rentable, reachable unit pays its share of a quarter's rent
+// (1 / days per quarter), times how full it was today. Paid into funds every midnight,
+// so money comes in as steadily as the bills go out.
+export function dailyRent(tower, config, rentMultOf, occupancyOf) {
+  const dpq = config.time.daysPerQuarter;
+  let total = 0;
+  for (const f of tower.facilities.values()) {
+    const def = config.facilities[f.type];
+    if (def.rentPerCell <= 0 || !isConnected(tower, config, f)) continue;
+    total += (f.width * def.rentPerCell * Math.min(1, occupancyOf(f)) * rentMultOf(f)) / dpq;
+  }
+  return Math.round(total);
+}
+
+// The quarter's rent, worked out from the days each unit was occupied. It is the
+// total shown on the quarterly report (the money itself already arrived day by day).
 // Rent due at the end of a quarter: each facility's full-quarter rent times
 // the share of days it was occupied (an empty unit pays nothing, a unit built
 // halfway through the quarter only counts the days it existed).

@@ -33,7 +33,7 @@ function drawArrow(ctx, cx, cy, size, dir, color) {
 }
 
 // alpha (0-1) smooths car movement between simulation ticks.
-export function drawElevators(ctx, W, H, camera, config, system, alpha) {
+export function drawElevators(ctx, W, H, camera, config, system, alpha, rich = false) {
   const zoom = camera.zoom;
   const { cellWidth, floorHeight } = config.grid;
   const cellPx = cellWidth * zoom;
@@ -80,7 +80,7 @@ export function drawElevators(ctx, W, H, camera, config, system, alpha) {
       for (let i = 0; i < shown; i++) {
         const r = queue[i];
         const mood = riderMood(r, config);
-        drawFigure(ctx, x - cellPx * 0.2 - i * figSize * 0.42, baseY, figSize, MOOD_COLORS[mood], mood, riderHead(r, config));
+        drawFigure(ctx, x - cellPx * 0.2 - i * figSize * 0.42, baseY, figSize, MOOD_COLORS[mood], mood, riderHead(r, config), rich ? { rich, hair: r.tenant?.id ?? i } : null);
       }
       if (queue.length > shown && detailed) {
         ctx.fillStyle = '#ffffff';
@@ -130,6 +130,25 @@ export function drawElevators(ctx, W, H, camera, config, system, alpha) {
       ctx.fillStyle = '#fff6d6'; // lit interior
       ctx.fillRect(ix, iy, iw, ih);
 
+      if (rich) {
+        // ceiling light, a handrail and a little floor display
+        ctx.fillStyle = 'rgba(255,255,255,0.75)';
+        ctx.fillRect(ix + iw * 0.2, iy, iw * 0.6, Math.max(1, ih * 0.05));
+        ctx.fillStyle = 'rgba(120,100,70,0.35)';
+        ctx.fillRect(ix, iy + ih * 0.5, iw, Math.max(1, ih * 0.03));
+        if (zoom >= 0.8 && car.door > 0.3) {
+          ctx.fillStyle = '#1b222b';
+          roundedRectPath(ctx, ix + iw * 0.34, iy + ih * 0.07, iw * 0.32, ih * 0.15, ih * 0.04);
+          ctx.fill();
+          ctx.fillStyle = '#ffb347';
+          ctx.font = `700 ${Math.max(6, ih * 0.12)}px system-ui, sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(String(Math.round(pos)), ix + iw * 0.5, iy + ih * 0.15);
+          ctx.textAlign = 'start';
+        }
+      }
+
       // Riders inside (two rows of up to four)
       if (car.door > 0.12) {
         const size = ih * 0.62;
@@ -137,7 +156,7 @@ export function drawElevators(ctx, W, H, camera, config, system, alpha) {
           const col = i % 4;
           const row = Math.floor(i / 4);
           const mood = riderMood(r, config);
-          drawFigure(ctx, ix + iw * (0.15 + col * 0.23), iy + ih * (0.62 + row * 0.34), size * (row ? 0.85 : 1), MOOD_COLORS[mood], 'calm', riderHead(r, config));
+          drawFigure(ctx, ix + iw * (0.15 + col * 0.23), iy + ih * (0.62 + row * 0.34), size * (row ? 0.85 : 1), MOOD_COLORS[mood], 'calm', riderHead(r, config), rich ? { rich, hair: r.tenant?.id ?? i } : null);
         });
       }
 

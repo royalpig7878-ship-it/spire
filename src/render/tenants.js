@@ -7,15 +7,38 @@
 
 import { drawFigure, MOOD_COLORS, moodOfStress } from './figures.js';
 import { drawIcon } from './facilities.js';
+import { ROOM_KINDS, roomGeom, personSpot, shirtOf } from './rooms.js';
+import { drawPose, hairOf } from './poses.js';
 
-export function drawTenants(ctx, W, H, camera, config, sys, highlightId = null) {
+const lastX = new Map(); // tenant id -> last screen x, to know which way they walk
+const facing = new Map(); // tenant id -> facing left?
+
+// The "!" bubble over an impatient or stressed walker.
+function drawMoodBubble(ctx, cx, y, floorPx, mood) {
+  const r = floorPx * 0.07;
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(cx, y, r * 1.6, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = mood === 'stressed' ? '#c0392b' : '#b9770e';
+  ctx.font = `700 ${Math.max(7, r * 2.6)}px system-ui, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(mood === 'stressed' ? '!!' : '!', cx, y + r * 0.1);
+  ctx.textAlign = 'start';
+}
+
+// `cutaway` is { tower, hour } when rooms are drawn as cross-sections: people then
+// stand and sit inside their rooms, doing what suits the time of day.
+export function drawTenants(ctx, W, H, camera, config, sys, highlightId = null, rich = false, cutaway = null) {
+  const seconds = performance.now() / 1000;
   const zoom = camera.zoom;
   const { cellWidth, floorHeight } = config.grid;
   const floorPx = floorHeight * zoom;
   const sc = config.tenants.stress;
   const toScreenX = (wx) => (wx - camera.x) * zoom + W / 2;
   const toScreenY = (wy) => (wy - camera.y) * zoom + H / 2;
-  const showInside = zoom >= 0.4; // tiny people at their desks only when zoomed in enough
+  const showInside = zoom >= 0.3; // tiny people at their desks only when zoomed in enough
 
   for (const t of sys.list) {
     if (!t.pos || t.mode === 'away') continue;
@@ -23,6 +46,9 @@ export function drawTenants(ctx, W, H, camera, config, sys, highlightId = null) 
 
     const inside = t.mode === 'home' || t.mode === 'dwell';
     if (inside && !showInside) continue;
+
+    // Cutaway: draw them in their room, busy with something.
+    if (cutaway && inside && t.kind !== 'inspector' && drawInRoom(ctx, t, config, cutaway, camera, W, H, seconds, floorPx)) continue;
 
     const x = toScreenX(t.pos.x * cellWidth);
     const baseY = toScreenY(-t.pos.floor * floorHeight) - floorPx * 0.06;
@@ -32,13 +58,28 @@ export function drawTenants(ctx, W, H, camera, config, sys, highlightId = null) 
     if (t.kind === 'inspector') {
       // Dark suit, bigger, with a gold star: easy to follow on its tour.
       ctx.globalAlpha = 1;
-      drawFigure(ctx, x, baseY, floorPx * 0.78, '#27323f', mood, '#f1d3b3');
+      drawFigure(ctx, x, baseY, floorPx * 0.78, '#27323f', mood, '#f1d3b3', rich ? { rich, walk: seconds * 7 + t.id, hair: 2, bag: true } : null);
       drawIcon(ctx, 'star', x, baseY - floorPx * 1.12, Math.max(5, floorPx * 0.13), '#ffd166');
+      continue;
+    }
+    // Cutaway: walkers get the same drawing style, facing the way they are heading.
+    if (cutaway && !inside) {
+      const last = lastX.get(t.id);
+      lastX.set(t.id, x);
+      if (last !== undefined && Math.abs(x - last) > 0.05) facing.set(t.id, x < last);
+      drawPose(ctx, 'walk', x, baseY, (floorPx / 48) * 1.05, facing.get(t.id) ?? false, seconds * 1.1 + t.id * 1.7, {
+        shirt: mood === 'calm' ? shirtOf(t.id) : MOOD_COLORS[mood],
+        skin: config.tenants.traits[t.trait].color,
+        hair: hairOf(t.id),
+        bag: t.kind === 'worker',
+      });
+      if (mood !== 'calm' && floorPx > 30) drawMoodBubble(ctx, x, baseY - floorPx * 0.7, floorPx, mood);
       continue;
     }
     const size = floorPx * (inside ? 0.46 : 0.62);
     ctx.globalAlpha = inside ? 0.9 : 1;
-    drawFigure(ctx, x, baseY, size, MOOD_COLORS[mood], inside ? 'calm' : mood, config.tenants.traits[t.trait].color);
+    const look = rich ? { rich, walk: t.mode === 'travel' ? seconds * 9 + t.id * 1.7 : null, hair: t.id, bag: t.kind === 'worker' && !inside } : null;
+    drawFigure(ctx, x, baseY, size, MOOD_COLORS[mood], inside ? 'calm' : mood, config.tenants.traits[t.trait].color, look);
   }
   ctx.globalAlpha = 1;
 
@@ -78,4 +119,33 @@ export function drawTenants(ctx, W, H, camera, config, sys, highlightId = null) 
   }
   ctx.globalAlpha = 1;
   ctx.textAlign = 'start';
+}
+
+// Returns true when the person was drawn inside a cutaway room.
+function drawInRoom(ctx, t, config, cutaway, camera, W, H, seconds, floorPx) {
+  const venue = t.mode === 'dwell' && t.cafeId !== null;
+  const f = cutaway.tower.facilities.get(venue ? t.cafeId : t.homeId);
+  if (!f) return false;
+  const def = config.facilities[f.type];
+  const kind = def.style ?? f.type;
+  if (!ROOM_KINDS.has(kind) || def.transport) return false;
+  const zoom = camera.zoom;
+  const { cellWidth, floorHeight } = config.grid;
+  const x = (f.cell * cellWidth - camera.x) * zoom + W / 2;
+  const top = (-(f.floor + 1) * floorHeight - camera.y) * zoom + H / 2;
+  if (x > W || x + f.width * cellWidth * zoom < 0 || top > H || top + floorPx < 0) return true;
+  const g = roomGeom(x, top, f.width * cellWidth * zoom, floorPx);
+  const spot = personSpot({ typeId: f.type, def, W: g.W, slot: t.slot ?? 0, id: t.id, hour: cutaway.hour, seconds, venue });
+  const mood = moodOfStress(t.stress, config.tenants.stress);
+  drawPose(
+    ctx,
+    spot.pose,
+    g.x + spot.x * g.k,
+    g.y + spot.y * g.k,
+    g.k * spot.scale,
+    spot.flip,
+    seconds + t.id * 0.7,
+    { shirt: mood === 'calm' ? shirtOf(t.id) : MOOD_COLORS[mood], skin: config.tenants.traits[t.trait].color, hair: hairOf(t.id) },
+  );
+  return true;
 }

@@ -6,6 +6,7 @@
 
 export const CATEGORIES = [
   { id: 'tools', label: 'Tools' },
+  { id: 'needs', label: 'Needs' },
   { id: 'work', label: 'Work' },
   { id: 'living', label: 'Living' },
   { id: 'hotel', label: 'Hotel' },
