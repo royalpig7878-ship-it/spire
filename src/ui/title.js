@@ -42,6 +42,7 @@ export function createTitle(root, config, handlers) {
           <button class="${cont ? 'choice' : 'primary hero'}" data-act="career"><span>Career<small>Five scenarios with goals and medals</small></span></button>
           <button class="choice" data-act="sandbox"><span>Sandbox<small>Free play, your rules</small></span></button>
           <button class="choice" data-act="settings"><span>Settings and help</span></button>
+          <div class="credit">Sound effects by Ovani Sound</div>
         </div>`;
     } else if (view === 'career') {
       const records = careerRecords();

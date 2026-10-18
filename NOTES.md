@@ -82,6 +82,20 @@ milestone, once you've confirmed it works — never before.
 
 ## Milestone log
 
+- **Recorded sounds** (after M10): the game's building, demolish, money,
+  warning and level-up sounds, plus birds and distant street noises, now use
+  recordings from the **Ovani Sound "Building Tycoon Sound FX Pack"** that you
+  bought (credited on the title screen). The elevator ding, doors, crowd,
+  rain, keyboards and the music are still made live by the game. The
+  recordings are packed into one small file, `assets/sfx/sfx.wav`, with
+  `assets/sfx/sfx.json` listing where each clip starts. `tools/build-sfx.py`
+  makes them from the pack (clips trimmed, shrunk to 22 kHz, volume evened
+  out). **License note:** Ovani's terms allow using the sounds inside a game
+  but not sharing the raw files on their own, so the original WAV files stay
+  OUT of this project and the repository, and only this changed, combined
+  file ships with the game. If a sound is missing or still loading, the game
+  falls back to its built-in synthesized sound.
+
 - **Building ambience** (after M10): the tower now sounds alive. A crowd
   murmur grows with the people on screen (plus soft chatter), elevators
   whoosh while they move and their doors hiss and thunk, offices click with

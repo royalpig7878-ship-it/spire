@@ -16,6 +16,9 @@ export function createAmbience(audio, config) {
   let nextBird = 0;
   let nextCricket = 0;
   let nextPhone = 0;
+  let nextHoot = 0;
+  let nextEngine = 0;
+  let nextSiren = 0;
   let nextTyping = 0;
   const carStates = new Map(); // car -> last state, to hear doors open and close
 
@@ -110,6 +113,21 @@ export function createAmbience(audio, config) {
       if (day && !rain && kind !== 'snow' && zoom <= 1.4 && outdoors > 0.5 && now > nextBird) {
         audio.playAmbient('bird', 1);
         nextBird = now + 5 + Math.random() * 10;
+      }
+      // Life out on the street: a car horn, an engine passing, a far-off siren
+      if (outdoors > 0.5 && zoom <= 1.3 && hour > 6 && hour < 23) {
+        if (now > nextHoot) {
+          audio.playAmbient('hoot', 5);
+          nextHoot = now + 25 + Math.random() * 45;
+        }
+        if (now > nextEngine) {
+          audio.playAmbient('engine', 10);
+          nextEngine = now + 45 + Math.random() * 60;
+        }
+        if (now > nextSiren) {
+          audio.playAmbient(Math.random() < 0.5 ? 'police' : 'ambulance', 30);
+          nextSiren = now + 120 + Math.random() * 150;
+        }
       }
       if (night && !rain && zoom <= 1.6 && outdoors > 0.5 && now > nextCricket) {
         audio.playAmbient('cricket', 0.4);

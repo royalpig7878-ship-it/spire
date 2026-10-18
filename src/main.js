@@ -124,8 +124,9 @@ function tryUnlockAudio() {
 UNLOCK_EVENTS.forEach((name) => document.addEventListener(name, tryUnlockAudio, true));
 // A soft click on every on-screen button.
 document.getElementById('ui-root').addEventListener('click', (event) => {
-  if (event.target.closest('button')) {
-    audio.play('click', 0.06);
+  const pressed = event.target.closest('button');
+  if (pressed) {
+    audio.play(pressed.classList.contains('item') ? 'select' : 'click', 0.06);
     buzz('tap');
   }
 });
@@ -156,7 +157,10 @@ const toolbar = createToolbar(uiRoot, config, {
     game.demoTraffic = !game.demoTraffic;
   },
   getTier: () => game.tower.tier,
-  onLockedTap: (message) => toolbar.toast(message),
+  onLockedTap: (message) => {
+    toolbar.toast(message);
+    audio.play('error');
+  },
   // A Needs card was tapped: fly to the problem, ring it, and show the helpful layer.
   onNeed(need) {
     if (need.target) {
@@ -206,7 +210,10 @@ const infoPanel = createInfoPanel(uiRoot, config, {
   onSetCars(facility, count) {
     const result = setShaftCars(game.tower, config, facility, count);
     if (!result.ok) toolbar.toast(result.reason);
-    else if (result.change > 0) toolbar.toast(`Car added  -${formatMoney(config.elevators.carCost)}`);
+    else if (result.change > 0) {
+      toolbar.toast(`Car added  -${formatMoney(config.elevators.carCost)}`);
+      audio.play('upgradeSmall');
+    }
     else if (result.change < 0) toolbar.toast('Car removed');
   },
   onToggleStop(facility, floor) {
@@ -216,8 +223,26 @@ const infoPanel = createInfoPanel(uiRoot, config, {
   onSprinklers(facility) {
     const result = installSprinklers(game, config, facility);
     toolbar.toast(result.ok ? `Sprinklers installed  -${formatMoney(result.cost)}` : result.reason);
+    audio.play(result.ok ? 'upgradeObject' : 'error');
   },
 });
+// Which recorded sound fits the building you just placed.
+function buildSoundFor(typeId, def) {
+  if (typeId === 'clinic') return 'buildHospital';
+  if (typeId === 'security') return 'buildPolice';
+  if (typeId === 'substation') return 'buildComms';
+  if (def.transport || typeId === 'lobby') return 'build'; // stairs, elevators, lobby wings: a plain thunk
+  if (def.cost < 5000) return 'buildLow';
+  if (def.cost < 12000) return 'buildMed';
+  return 'buildHigh';
+}
+
+// Big buildings come down with a bulldozer; small ones are taken apart.
+function demolishSoundFor(def) {
+  if (def.cost >= 8000) return 'bulldoze';
+  return Math.random() < 0.7 ? 'demolish' : 'scrap';
+}
+
 // The Finances screen (from the funds at the top, or the menu).
 function openFinances() {
   modals.showFinances(financeSummary(game, config), () => {});
@@ -294,6 +319,7 @@ function startFreshGame(options, withTutorial) {
   saveGame(game, config); // overwrite the old save right away
   if (withTutorial) tutorial.start();
   else toolbar.toast(options.kind === 'career' ? `${scenarioById(config, options.scenario).name}: go!` : 'New game started');
+  audio.play('legislation');
 }
 
 // ---- Title screen (Continue / Career / Sandbox) ----
@@ -355,7 +381,10 @@ function openFireSale() {
     offers: fireSaleOffers(game, config),
     onSell(offer) {
       const result = fireSaleSell(game, config, offer.facility);
-      if (result.ok) toolbar.toast(`Sold ${offer.name}  +${formatMoney(result.refund)}`);
+      if (result.ok) {
+        toolbar.toast(`Sold ${offer.name}  +${formatMoney(result.refund)}`);
+        audio.play('sell');
+      }
       if (game.tower.funds >= 0) {
         modals.close();
         toolbar.toast('Back above $0');
@@ -392,10 +421,10 @@ function pumpModals() {
     buzz('celebrate');
     modals.showTierUp(event, () => saveGame(game, config));
   } else if (event.type === 'inspection') {
-    audio.play('error');
+    audio.play('bad');
     modals.showInspectionResult(event, () => {});
   } else if (event.type === 'vipResult') {
-    audio.play(event.pass ? 'good' : 'error');
+    audio.play(event.pass ? 'good' : 'bad');
     modals.showVipResult(event, () => {});
   } else if (event.type === 'victory') {
     audio.play('fanfare');
@@ -408,7 +437,7 @@ function pumpModals() {
     const next = config.modes.scenarios[index + 1];
     const firstTime = won && !careerRecords()[spec.id];
     if (won) recordResult(spec.id, event.medal, event.days);
-    audio.play(won ? 'fanfare' : 'down');
+    audio.play(won ? 'achievement' : 'bad');
     if (won) buzz('celebrate');
     modals.showScenarioResult(
       { won, spec, days: event.days, medal: event.medal, firstTime, limit: spec.days },
@@ -423,7 +452,7 @@ function pumpModals() {
       },
     );
   } else if (event.type === 'extortion') {
-    audio.play('notice');
+    audio.play('warning');
     buzz('alarm');
     modals.showExtortion(event, {
       onPay: () => toolbar.toast(resolveExtortion(game, config, 'pay').text),
@@ -465,7 +494,9 @@ function updatePreview(world, pointerType, starting = false) {
     } else {
       const height = def.fixedHeight ?? 1; // the Crown is always 3 floors tall
       const check = canPlace(tower, config, typeId, floor, cell, height);
+      const before = ui.ghost;
       ui.ghost = { typeId, floor, cell, height, ok: check.ok, reason: check.reason };
+      if (!starting && before && check.ok && (before.cell !== cell || before.floor !== floor)) audio.play('dragStep', 0.07);
     }
   } else if (ui.tool.kind === 'district') {
     // Aim at a band of floors; basements and floors above the plot do not count.
@@ -570,7 +601,7 @@ const placementHandlers = {
           ui.pops.set(built.id, performance.now());
           spawnDust(ui.particles, config, built);
         }
-        audio.play('build');
+        audio.play(buildSoundFor(g.typeId, gdef));
         buzz('build');
         if (gdef.landmark) onCrownBuilt(game, config); // the Crown wins the game
       } else {
@@ -584,14 +615,14 @@ const placementHandlers = {
       toolbar.toast(
         result.ok ? (p.clear ? 'District removed' : `${theme.label} district  -${formatMoney(p.cost)}`) : result.reason,
       );
-      audio.play(result.ok ? 'good' : 'error');
+      audio.play(result.ok ? 'upgrade' : 'error');
     } else if (ui.demolishTarget) {
       const target = ui.demolishTarget.facility;
       const result = demolish(tower, config, target);
       toolbar.toast(result.ok ? `Demolished  +${formatMoney(result.refund)}` : result.reason);
       if (result.ok) {
         spawnDebris(ui.particles, config, target, config.facilities[target.type].color);
-        audio.play('demolish');
+        audio.play(demolishSoundFor(config.facilities[target.type]));
         buzz('demolish');
       } else {
         audio.play('error');
@@ -696,7 +727,7 @@ const loop = createGameLoop({
     // News from the simulation (fires, inspector notes...) becomes on-screen alerts.
     for (const alert of game.alerts) {
       alerts.add(alert);
-      const sound = { fire: 'alarm', power: 'down', good: 'good' }[alert.kind] ?? 'notice';
+      const sound = { fire: 'alarm', power: 'warning', good: 'good' }[alert.kind] ?? 'notice';
       audio.play(sound, 0.5);
       if (alert.kind === 'fire') buzz('alarm');
     }

@@ -24,6 +24,9 @@ export function createAudio(settings) {
   let sfxBus = null;
   let musicBus = null;
   let ambBus = null; // crowd, elevators, rain, birds...
+  let sprite = null; // the packed recorded sounds (see assets/sfx), once loaded
+  let spriteMap = null;
+  const lastVariant = {};
   let musicTimer = null;
   let nextBarTime = 0;
   let barIndex = 0;
@@ -42,6 +45,7 @@ export function createAudio(settings) {
       musicBus.connect(master);
       master.connect(ctx.destination);
       buildAmbience();
+      loadSprite();
       applySettings();
     }
     if (ctx.state === 'suspended') ctx.resume();
@@ -72,6 +76,84 @@ export function createAudio(settings) {
     g.connect(bus);
     osc.start(start);
     osc.stop(start + dur + 0.05);
+  }
+
+
+  // ---- Recorded sounds ----
+  //
+  // assets/sfx/sfx.wav holds all the recorded clips one after another, and sfx.json says
+  // where each one starts (made by tools/build-sfx.py). A "group" is a few variations of
+  // one job, e.g. four different placement thunks; each play picks one at random.
+
+  // game sound name -> which group to play, and how loud (0..1)
+  const RECORDED = {
+    build: { group: 'place', gain: 0.34 },
+    buildLow: { group: 'buildLow', gain: 0.27 },
+    buildMed: { group: 'buildMed', gain: 0.2 },
+    buildHigh: { group: 'buildHigh', gain: 0.21 },
+    buildHospital: { group: 'buildHospital', gain: 0.23 },
+    buildPolice: { group: 'buildPolice', gain: 0.22 },
+    buildComms: { group: 'buildComms', gain: 0.25 },
+    dragStep: { group: 'dragStep', gain: 0.18 },
+    demolish: { group: 'demolish', gain: 0.33 },
+    bulldoze: { group: 'bulldoze', gain: 0.23 },
+    scrap: { group: 'scrap', gain: 0.19 },
+    sell: { group: 'sell', gain: 0.21 },
+    error: { group: 'denied', gain: 0.15 },
+    select: { group: 'select', gain: 0.25 },
+    good: { group: 'good', gain: 0.19 },
+    notice: { group: 'good', gain: 0.16 },
+    bad: { group: 'bad', gain: 0.16 },
+    achievement: { group: 'achievement', gain: 0.25 },
+    fanfare: { group: 'levelUp', gain: 0.23 },
+    kaching: { group: 'money', gain: 0.35 },
+    econUp: { group: 'econUp', gain: 0.3 },
+    down: { group: 'econDown', gain: 0.34 },
+    tax: { group: 'tax', gain: 0.31 },
+    legislation: { group: 'legislation', gain: 0.32 },
+    alarm: { group: 'disaster', gain: 0.32 },
+    warning: { group: 'warning', gain: 0.24 },
+    upgrade: { group: 'upgrade', gain: 0.11 },
+    upgradeSmall: { group: 'upgradeSmall', gain: 0.18 },
+    upgradeObject: { group: 'upgradeObject', gain: 0.27 },
+  };
+  // If the recordings are not loaded (yet), these sounds use a synthesized one instead.
+  const FALLBACK = {
+    buildLow: 'build', buildMed: 'build', buildHigh: 'build', buildHospital: 'build', buildPolice: 'build', buildComms: 'build',
+    bulldoze: 'demolish', scrap: 'demolish', sell: 'coin', select: 'click', bad: 'error', achievement: 'fanfare',
+    econUp: 'good', tax: 'notice', legislation: 'notice', warning: 'alarm', upgrade: 'good', upgradeSmall: 'good', upgradeObject: 'good',
+  };
+
+  async function loadSprite() {
+    try {
+      const base = new URL('../../assets/sfx/', import.meta.url);
+      const [map, bytes] = await Promise.all([
+        fetch(new URL('sfx.json', base)).then((r) => r.json()),
+        fetch(new URL('sfx.wav', base)).then((r) => r.arrayBuffer()),
+      ]);
+      sprite = await ctx.decodeAudioData(bytes);
+      spriteMap = map.groups;
+    } catch {
+      sprite = null; // no recordings: the synthesized sounds keep working
+    }
+  }
+
+  // Plays one random clip from a group through `bus`. Returns false if it cannot.
+  function playRecorded(group, gain, bus, when = ctx.currentTime + 0.01) {
+    const clips = spriteMap?.[group];
+    if (!sprite || !clips) return false;
+    let i = Math.floor(Math.random() * clips.length);
+    if (clips.length > 1 && i === lastVariant[group]) i = (i + 1) % clips.length; // never the same one twice in a row
+    lastVariant[group] = i;
+    const clip = clips[i];
+    const src = ctx.createBufferSource();
+    src.buffer = sprite;
+    const g = ctx.createGain();
+    g.gain.value = gain;
+    src.connect(g);
+    g.connect(bus);
+    src.start(when, clip.s, clip.d);
+    return true;
   }
 
   // Each effect is a few tones. Times are seconds from "now".
@@ -128,12 +210,20 @@ export function createAudio(settings) {
   };
 
   function play(name, minGapSec = 0.04) {
-    if (settings.sfxVolume <= 0 || !EFFECTS[name]) return;
+    if (settings.sfxVolume <= 0) return;
     if (!ensure()) return;
     const now = ctx.currentTime;
     if (lastPlayed[name] !== undefined && now - lastPlayed[name] < minGapSec) return; // avoid machine-gunning
+    // A recorded sound if we have one, otherwise the little synthesized version.
+    const rec = RECORDED[name];
+    if (rec && playRecorded(rec.group, rec.gain, sfxBus)) {
+      lastPlayed[name] = now;
+      return;
+    }
+    const synth = EFFECTS[name] ? name : FALLBACK[name];
+    if (!EFFECTS[synth]) return;
     lastPlayed[name] = now;
-    EFFECTS[name](now + 0.01);
+    EFFECTS[synth](now + 0.01);
   }
 
   // ---- Music: a quiet generative loop ----
@@ -329,10 +419,19 @@ export function createAudio(settings) {
     },
   };
 
+  // The sounds from the world outside come from the recordings, quietly.
+  const OUTSIDE = { bird: { group: 'bird', gain: 0.065 }, hoot: { group: 'hoot', gain: 0.055 }, engine: { group: 'engine', gain: 0.05 }, police: { group: 'police', gain: 0.028 }, ambulance: { group: 'ambulance', gain: 0.036 } };
+
   function playAmbient(name, minGapSec = 0.15) {
-    if (settings.sfxVolume <= 0 || !ctx || !ambBus || !AMBIENT_EFFECTS[name]) return;
+    if (settings.sfxVolume <= 0 || !ctx || !ambBus) return;
     const now = ctx.currentTime;
     if (lastPlayed[name] !== undefined && now - lastPlayed[name] < minGapSec) return;
+    const out = OUTSIDE[name];
+    if (out && playRecorded(out.group, out.gain, ambBus)) {
+      lastPlayed[name] = now;
+      return;
+    }
+    if (!AMBIENT_EFFECTS[name]) return;
     lastPlayed[name] = now;
     AMBIENT_EFFECTS[name](now + 0.01);
   }
@@ -396,6 +495,7 @@ export function createAudio(settings) {
       applySettings();
     },
     isRunning: () => Boolean(ctx) && ctx.state === 'running',
+    recordingsLoaded: () => Boolean(sprite), // for testing
     setAmbience,
     playAmbient,
     play,
