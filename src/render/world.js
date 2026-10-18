@@ -14,7 +14,7 @@ import {
   drawSprinklers,
   roundedRectPath,
 } from './facilities.js';
-import { drawWeather } from './weather.js';
+import { drawWeather, drawWeatherClouds } from './weather.js';
 import { drawSkyLife, drawFlyers } from './ambient.js';
 import { drawParticles } from './particles.js';
 import { drawDirt, drawGlow, drawRoofProps, drawStreetProps, roofIds } from './detail.js';
@@ -58,6 +58,7 @@ export function renderWorld(ctx, W, H, camera, config, game, ui, alpha) {
   const nightDim = Math.min(1, skyState.dark * config.sky.nightDimStrength);
   if (!ui.lowDetail) drawSkyLife(ctx, W, H, camera, hour, seconds, skyState.dark); // clouds, birds
   if (!ui.lowDetail) drawFlyers(ctx, W, H, camera, seconds, skyState.dark); // planes, blimps, balloons...
+  drawWeatherClouds(ctx, W, H, game.weather.kind, seconds, camera); // rain and snow clouds sit in the sky, behind everything
 
   // --- Ground (dims at night like the buildings) ---
   const groundY = toScreenY(world.groundY);
@@ -281,7 +282,7 @@ export function renderWorld(ctx, W, H, camera, config, game, ui, alpha) {
   }
 
   // --- Weather over everything ---
-  drawWeather(ctx, W, H, game.weather.kind, seconds, ui.lowDetail ? 0.4 : 1);
+  drawWeather(ctx, W, H, game.weather.kind, seconds, ui.lowDetail ? 0.4 : 1, toScreenY(world.groundY));
 
   // --- Ghost (build preview; may be several floors tall) ---
   if (ui.ghost) {

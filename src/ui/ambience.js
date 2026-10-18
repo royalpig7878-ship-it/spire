@@ -84,13 +84,15 @@ export function createAmbience(audio, config) {
       const motorPitch = movingNear ? clamp(speedSum / movingNear / 8, 0, 1) : 0.3;
 
       // ---- Weather and time of day ----
+      // Outdoor sounds fade away as you look down into the basement and the dirt.
+      const outdoors = clamp(toY(0) / (H * 0.4), 0, 1);
       const kind = game.weather.kind;
       const rain = kind === 'rain' ? 1 : 0;
       const hour = ((game.clock.minutes / 60) % 24 + 24) % 24;
       const day = hour > 6.5 && hour < 18.5;
       const night = hour < 5 || hour > 20;
 
-      audio.setAmbience({ crowd, motor, motorPitch, rain: rain * clamp(0.35 + closeness * 0.65, 0, 1) });
+      audio.setAmbience({ crowd, motor, motorPitch, rain: rain * clamp(0.35 + closeness * 0.65, 0, 1) * outdoors });
 
       // ---- Little events, at random moments ----
       if (crowd > 0.04 && now > nextChatter) {
@@ -105,11 +107,11 @@ export function createAmbience(audio, config) {
         audio.playAmbient('phone', 5);
         nextPhone = now + 14 + Math.random() * 25;
       }
-      if (day && !rain && kind !== 'snow' && zoom <= 1.4 && now > nextBird) {
+      if (day && !rain && kind !== 'snow' && zoom <= 1.4 && outdoors > 0.5 && now > nextBird) {
         audio.playAmbient('bird', 1);
         nextBird = now + 5 + Math.random() * 10;
       }
-      if (night && !rain && zoom <= 1.6 && now > nextCricket) {
+      if (night && !rain && zoom <= 1.6 && outdoors > 0.5 && now > nextCricket) {
         audio.playAmbient('cricket', 0.4);
         nextCricket = now + 0.8 + Math.random() * 1.6;
       }
