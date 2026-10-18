@@ -9,9 +9,8 @@ const KEY = 'spire.settings';
 
 export const DEFAULTS = {
   textScale: 1, // 0.9 small, 1 normal, 1.15 large, 1.3 huge
-  sfx: true, // sound effects
-  music: true, // background music
-  volume: 0.6, // 0 to 1
+  sfxVolume: 0.75, // sound effects and the building's own sounds, 0 (off) to 1
+  musicVolume: 0.75, // background music, 0 (off) to 1
   haptics: true, // vibration on phones
   colorblind: false, // color-blind friendly palette
   graphics: 'auto', // 'auto' | 'high' | 'low' (battery saver)
@@ -29,7 +28,11 @@ function load() {
   }
 }
 
-export const settings = { ...DEFAULTS, ...load() };
+const saved = load();
+export const settings = { ...DEFAULTS, ...saved };
+// Older versions had On/Off switches: keep the choice of anyone who had sound switched off.
+if (saved.sfx === false && saved.sfxVolume === undefined) settings.sfxVolume = 0;
+if (saved.music === false && saved.musicVolume === undefined) settings.musicVolume = 0;
 const listeners = new Set();
 
 export function updateSetting(key, value) {

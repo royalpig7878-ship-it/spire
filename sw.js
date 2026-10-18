@@ -5,7 +5,7 @@
 // saved copy right away, and quietly fetch a fresh copy for next time.
 // Browsers only allow service workers over https (or localhost).
 
-const CACHE = 'spire-v11';
+const CACHE = 'spire-v12';
 const CORE = [
   './', './index.html', './manifest.json', './config.js', './catalog.js',
   './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png',
@@ -21,7 +21,7 @@ const CORE = [
   './src/sim/services.js', './src/sim/sfx.js', './src/sim/shafts.js', './src/sim/stories.js',
   './src/sim/tenants.js', './src/sim/tower.js', './src/sim/weather.js',
   './src/ui/alerts.js', './src/ui/haptics.js', './src/ui/hud.js', './src/ui/infopanel.js', './src/ui/input.js',
-  './src/ui/modals.js', './src/ui/settings.js', './src/ui/story.js', './src/ui/toolbar.js', './src/ui/tutorial.js', './src/ui/title.js',
+  './src/ui/modals.js', './src/ui/settings.js', './src/ui/story.js', './src/ui/toolbar.js', './src/ui/tutorial.js', './src/ui/title.js', './src/ui/ambience.js',
 ];
 
 self.addEventListener('install', (event) => {

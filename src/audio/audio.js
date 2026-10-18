@@ -23,6 +23,7 @@ export function createAudio(settings) {
   let master = null;
   let sfxBus = null;
   let musicBus = null;
+  let ambBus = null; // crowd, elevators, rain, birds...
   let musicTimer = null;
   let nextBarTime = 0;
   let barIndex = 0;
@@ -40,6 +41,7 @@ export function createAudio(settings) {
       sfxBus.connect(master);
       musicBus.connect(master);
       master.connect(ctx.destination);
+      buildAmbience();
       applySettings();
     }
     if (ctx.state === 'suspended') ctx.resume();
@@ -48,10 +50,11 @@ export function createAudio(settings) {
 
   function applySettings() {
     if (!ctx) return;
-    master.gain.value = settings.volume;
-    sfxBus.gain.value = settings.sfx ? 1 : 0;
-    musicBus.gain.value = settings.music ? 0.55 : 0;
-    if (settings.music) startMusic();
+    master.gain.value = 0.8;
+    sfxBus.gain.value = settings.sfxVolume;
+    if (ambBus) ambBus.gain.value = settings.sfxVolume; // the building's own sounds follow the Sound effects bar
+    musicBus.gain.value = 0.55 * settings.musicVolume;
+    if (settings.musicVolume > 0) startMusic();
     else stopMusic();
   }
 
@@ -125,7 +128,7 @@ export function createAudio(settings) {
   };
 
   function play(name, minGapSec = 0.04) {
-    if (!settings.sfx || !EFFECTS[name]) return;
+    if (settings.sfxVolume <= 0 || !EFFECTS[name]) return;
     if (!ensure()) return;
     const now = ctx.currentTime;
     if (lastPlayed[name] !== undefined && now - lastPlayed[name] < minGapSec) return; // avoid machine-gunning
@@ -171,6 +174,167 @@ export function createAudio(settings) {
   function stopMusic() {
     clearInterval(musicTimer);
     musicTimer = null;
+  }
+
+
+  // ---- Ambience: the sounds of a living building ----
+  //
+  // Everything is made from filtered noise and a few tiny blips, so there are no
+  // audio files and no constant low drone (those make a speaker "hum"). A driver
+  // (src/ui/ambience.js) tells us how crowded, how busy the elevators are, whether
+  // it rains... and we fade the layers up and down.
+
+  const amb = { crowd: null, crowd2: null, motor: null, motorFilter: null, rain: null };
+  let noiseBuf = null;
+
+  function noiseSource() {
+    const src = ctx.createBufferSource();
+    src.buffer = noiseBuf;
+    src.loop = true;
+    src.loopStart = Math.random() * 0.5;
+    return src;
+  }
+
+  function buildAmbience() {
+    ambBus = ctx.createGain();
+    ambBus.gain.value = 1;
+    ambBus.connect(master);
+    // two seconds of white noise, looped by every layer (each starts at a different spot)
+    noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+    const data = noiseBuf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+
+    const layer = (type, freq, q, extra) => {
+      const src = noiseSource();
+      const f = ctx.createBiquadFilter();
+      f.type = type;
+      f.frequency.value = freq;
+      f.Q.value = q;
+      const g = ctx.createGain();
+      g.gain.value = 0;
+      src.connect(f);
+      let tail = f;
+      if (extra) {
+        const f2 = ctx.createBiquadFilter();
+        f2.type = extra.type;
+        f2.frequency.value = extra.freq;
+        tail.connect(f2);
+        tail = f2;
+      }
+      tail.connect(g);
+      g.connect(ambBus);
+      src.start();
+      return { gain: g, filter: f };
+    };
+    amb.crowd = layer('bandpass', 700, 0.7, { type: 'lowpass', freq: 2400 }); // a room full of voices
+    amb.crowd2 = layer('bandpass', 1500, 1.1, { type: 'lowpass', freq: 3200 }); // brighter chatter on top
+    amb.motor = layer('bandpass', 420, 1.4, { type: 'lowpass', freq: 1800 }); // elevator whoosh
+    amb.rain = layer('highpass', 1100, 0.5, { type: 'lowpass', freq: 7000 });
+  }
+
+  const smooth = (param, value, seconds = 0.35) => param.setTargetAtTime(value, ctx.currentTime, seconds);
+
+  // levels are 0..1
+  let lastAmbSet = 0;
+  function setAmbience({ crowd = 0, motor = 0, motorPitch = 0.5, rain = 0 }) {
+    if (!ctx || !amb.crowd) return;
+    if (settings.sfxVolume <= 0) crowd = motor = rain = 0;
+    if (ctx.currentTime - lastAmbSet < 0.08) return; // at most ~12 changes a second
+    lastAmbSet = ctx.currentTime;
+    // a living murmur: the level wobbles a little instead of sitting flat
+    const wobble = 0.85 + Math.random() * 0.3;
+    smooth(amb.crowd.gain.gain, 0.085 * crowd * wobble, 0.5);
+    smooth(amb.crowd2.gain.gain, 0.04 * crowd * (2 - wobble), 0.5);
+    smooth(amb.motor.gain.gain, 0.07 * motor, 0.25);
+    smooth(amb.motor.filter.frequency, 300 + motorPitch * 700, 0.3);
+    smooth(amb.rain.gain.gain, 0.04 * rain, 0.8);
+  }
+
+  // A burst of noise through a band filter: breath, door hiss, keyboard click.
+  function burst(start, dur, freq, q, gain, bus = ambBus, attack = 0.005) {
+    const src = noiseSource();
+    const f = ctx.createBiquadFilter();
+    f.type = 'bandpass';
+    f.frequency.value = freq;
+    f.Q.value = q;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, start);
+    g.gain.exponentialRampToValueAtTime(gain, start + attack);
+    g.gain.exponentialRampToValueAtTime(0.0001, start + dur);
+    src.connect(f);
+    f.connect(g);
+    g.connect(bus);
+    src.start(start);
+    src.stop(start + dur + 0.05);
+  }
+
+  const AMBIENT_EFFECTS = {
+    // Doors slide with a soft hiss, a little motor whirr, and (closing) a gentle thunk.
+    doorOpen: (t) => {
+      burst(t, 0.28, 2200, 1.2, 0.05);
+      tone(260, t, 0.25, { type: 'sine', gain: 0.025, slideTo: 420, bus: ambBus });
+    },
+    doorClose: (t) => {
+      burst(t, 0.28, 1900, 1.2, 0.05);
+      tone(420, t, 0.25, { type: 'sine', gain: 0.025, slideTo: 260, bus: ambBus });
+      tone(130, t + 0.27, 0.12, { type: 'sine', gain: 0.07, slideTo: 60, bus: ambBus });
+    },
+    // A murmur of chatter: a few soft vowel-like syllables.
+    chatter: (t) => {
+      const syllables = 2 + Math.floor(Math.random() * 3);
+      const base = 105 + Math.random() * 120;
+      let at = t;
+      for (let i = 0; i < syllables; i++) {
+        const dur = 0.08 + Math.random() * 0.1;
+        const osc = ctx.createOscillator();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(base * (0.9 + Math.random() * 0.3), at);
+        osc.frequency.linearRampToValueAtTime(base * (0.8 + Math.random() * 0.4), at + dur);
+        const f = ctx.createBiquadFilter();
+        f.type = 'bandpass';
+        f.frequency.value = 500 + Math.random() * 700;
+        f.Q.value = 4;
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, at);
+        g.gain.exponentialRampToValueAtTime(0.03, at + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+        osc.connect(f);
+        f.connect(g);
+        g.connect(ambBus);
+        osc.start(at);
+        osc.stop(at + dur + 0.05);
+        at += dur + 0.04 + Math.random() * 0.06;
+      }
+    },
+    typing: (t) => {
+      const n = 3 + Math.floor(Math.random() * 6);
+      let at = t;
+      for (let i = 0; i < n; i++) {
+        burst(at, 0.02, 3200 + Math.random() * 1200, 2, 0.03);
+        at += 0.06 + Math.random() * 0.1;
+      }
+    },
+    phone: (t) => {
+      for (let ring = 0; ring < 2; ring++) {
+        for (let i = 0; i < 6; i++) tone(i % 2 ? 1250 : 1000, t + ring * 0.7 + i * 0.055, 0.05, { type: 'triangle', gain: 0.018, bus: ambBus });
+      }
+    },
+    bird: (t) => {
+      const base = 2300 + Math.random() * 1200;
+      const notes = 2 + Math.floor(Math.random() * 3);
+      for (let i = 0; i < notes; i++) tone(base * (0.9 + Math.random() * 0.25), t + i * 0.11, 0.08, { type: 'sine', gain: 0.022, slideTo: base * 1.35, bus: ambBus });
+    },
+    cricket: (t) => {
+      for (let i = 0; i < 7; i++) tone(4300, t + i * 0.055, 0.025, { type: 'sine', gain: 0.01, bus: ambBus });
+    },
+  };
+
+  function playAmbient(name, minGapSec = 0.15) {
+    if (settings.sfxVolume <= 0 || !ctx || !ambBus || !AMBIENT_EFFECTS[name]) return;
+    const now = ctx.currentTime;
+    if (lastPlayed[name] !== undefined && now - lastPlayed[name] < minGapSec) return;
+    lastPlayed[name] = now;
+    AMBIENT_EFFECTS[name](now + 0.01);
   }
 
   // iPhones mute web audio when the silent switch is on, unless the page counts as "playing
@@ -232,8 +396,8 @@ export function createAudio(settings) {
       applySettings();
     },
     isRunning: () => Boolean(ctx) && ctx.state === 'running',
-    // For the Settings test button: what the browser says about our audio.
-    status: () => (ctx ? ctx.state : 'not started'),
+    setAmbience,
+    playAmbient,
     play,
     applySettings,
     setDarkness(value) {

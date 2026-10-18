@@ -29,6 +29,7 @@ import { saveGame, loadGame, hasSave } from './sim/save.js';
 import { scenarioStatus, scenarioById } from './sim/modes.js';
 import { careerRecords, recordResult } from './sim/career.js';
 import { createTitle } from './ui/title.js';
+import { createAmbience } from './ui/ambience.js';
 import { computeNeeds } from './sim/needs.js';
 import { financeSummary } from './sim/finance.js';
 import { createInputController } from './ui/input.js';
@@ -88,6 +89,7 @@ const ui = {
 
 // ---- Sound, vibration, accessibility and graphics settings ----
 const audio = createAudio(settings);
+const ambience = createAmbience(audio, config); // crowd, elevators, rain, birds...
 const baseDetailMinZoom = config.world.detailMinZoom;
 let autoLow = false; // graphics 'auto' switched itself to battery saver
 const fpsEl = document.createElement('div');
@@ -107,6 +109,7 @@ function applySetting(key) {
   if (key === 'graphics') setLowDetail(settings.graphics === 'low' || (settings.graphics === 'auto' && autoLow));
   if (key === 'showFps') fpsEl.hidden = !settings.showFps;
   audio.applySettings();
+  if (key === 'sfxVolume') audio.play('click', 0.2); // a little tick so you can hear the new level
 }
 onSettingChange(applySetting);
 
@@ -130,14 +133,6 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden) audio.suspend();
   else audio.resume();
 });
-
-// Settings > Test sound: wake the audio, play a chime, and report what the browser says.
-function testSound() {
-  audio.unlock();
-  audio.play('good', 0);
-  setTimeout(() => audio.play('ding', 0), 220);
-  return audio.status();
-}
 
 // "Install the app" (Android/desktop browsers offer this when the game is hosted over https).
 let installEvent = null;
@@ -265,7 +260,6 @@ const hud = createHud(uiRoot, config, {
         modals.showSettings({
           settings,
           onChange: (key, value) => updateSetting(key, value),
-      onTestSound: testSound,
           // The tutorial teaches on an empty plot, so replaying it starts a new tower.
           onTutorial: () => {
             const startIt = () => startFreshGame({ kind: 'sandbox' }, true);
@@ -340,7 +334,6 @@ const title = createTitle(uiRoot, config, {
     modals.showSettings({
       settings,
       onChange: (key, value) => updateSetting(key, value),
-      onTestSound: testSound,
       onTutorial: () => {
         title.hide();
         startFreshGame({ kind: 'sandbox' }, true);
@@ -721,6 +714,9 @@ const loop = createGameLoop({
       audio.play(s.name, s.name === 'ding' ? 0.18 : 0.3);
     }
     audio.setDarkness(skyAt(hourOfDay(game.clock), config).dark);
+    // The building's own sounds (not while paused, or behind the title screen)
+    if (game.speed > 0 && !game.blocked && !title.isOpen()) ambience.tick(game, camera, canvasWidthCss, canvasHeightCss, nowMs);
+    else audio.setAmbience({});
     storyCard.refresh();
     tutorial.tick();
     if (nowMs - needsAt > 1500 && !title.isOpen()) {
@@ -777,6 +773,6 @@ for (const key of ['textScale', 'colorblind', 'graphics', 'showFps']) applySetti
 title.show(); // every visit starts at the title screen (Continue resumes the saved tower)
 
 // Handy for testing in the browser console: window.spire.game
-window.spire = { game, config, camera, ui, infoPanel, modals, alerts, audio, settings, storyCard, tutorial, title };
+window.spire = { game, config, camera, ui, infoPanel, modals, alerts, audio, ambience, settings, storyCard, tutorial, title };
 
 loop.start();

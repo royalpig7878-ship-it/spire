@@ -82,6 +82,15 @@ milestone, once you've confirmed it works — never before.
 
 ## Milestone log
 
+- **Building ambience** (after M10): the tower now sounds alive. A crowd
+  murmur grows with the people on screen (plus soft chatter), elevators
+  whoosh while they move and their doors hiss and thunk, offices click with
+  keyboards and the odd phone, rain patters, birds sing by day and crickets
+  at night. Zoom in and it gets louder; zoom out and it is distant. It is
+  all made from filtered noise (no audio files, no low drone) and follows
+  the Sound effects bar. Code: `src/ui/ambience.js` (what to play) and the
+  ambience section of `src/audio/audio.js` (how it sounds).
+
 - **M10 — Detailed art, cutaway rooms and the Needs tab.**
   **Cutaway** (always on): rooms are drawn like a dollhouse
   cross-section with furniture, and people do little things inside them

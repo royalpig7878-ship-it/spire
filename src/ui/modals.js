@@ -314,11 +314,9 @@ export function createModals(root) {
     },
 
     // Settings: segmented choices that apply right away. `onChange(key, value)`.
-    showSettings({ settings, onChange, onTutorial, onTestSound, onInstall, canInstall, onClose }) {
+    showSettings({ settings, onChange, onTutorial, onInstall, canInstall, onClose }) {
       const SEGMENTS = [
         { key: 'textScale', label: 'Text size', options: [['Small', 0.9], ['Normal', 1], ['Large', 1.15], ['Huge', 1.3]] },
-        { key: 'sfx', label: 'Sound effects', options: [['On', true], ['Off', false]] },
-        { key: 'music', label: 'Music', options: [['On', true], ['Off', false]] },
         { key: 'haptics', label: 'Vibration', options: [['On', true], ['Off', false]] },
         { key: 'colorblind', label: 'Color-blind colors', options: [['Off', false], ['On', true]] },
         { key: 'graphics', label: 'Graphics', options: [['Auto', 'auto'], ['High', 'high'], ['Saver', 'low']] },
@@ -332,8 +330,8 @@ export function createModals(root) {
               .map(([text, value], i) => `<button type="button" data-i="${i}" class="${settings[s.key] === value ? 'on' : ''}">${text}</button>`)
               .join('')}</div></div>`,
           ).join('')}
-          <div class="setting"><span>Volume</span><input type="range" id="set-volume" min="0" max="1" step="0.05" value="${settings.volume}" /></div>
-          <button class="choice" id="set-test" type="button"><span>Test sound</span><small id="set-test-status"></small></button>
+          <div class="setting"><span>Sound effects</span><input type="range" id="set-sfx" min="0" max="1" step="0.05" value="${settings.sfxVolume}" aria-label="Sound effects volume" /></div>
+          <div class="setting"><span>Music</span><input type="range" id="set-music" min="0" max="1" step="0.05" value="${settings.musicVolume}" aria-label="Music volume" /></div>
           <p class="note">No sound on iPhone? Turn the silent switch (the little switch above the volume buttons) off, and turn the volume up.</p>
           <button class="choice" id="set-tutorial" type="button"><span>Replay the tutorial</span></button>
           ${canInstall ? '<button class="choice" id="set-install" type="button"><span>Install the app on this device</span></button>' : ''}
@@ -350,12 +348,8 @@ export function createModals(root) {
             backdrop.querySelector('.card').scrollTop = scroll;
           });
         });
-        card.querySelector('#set-volume').addEventListener('input', (e) => onChange('volume', Number(e.target.value)));
-        card.querySelector('#set-test').addEventListener('click', () => {
-          const state = onTestSound();
-          const label = { running: 'Playing. Did you hear it?', suspended: 'Blocked by the browser. Tap again.', 'not started': 'Not started. Tap again.', closed: 'Closed. Reload the page.' }[state] ?? state;
-          card.querySelector('#set-test-status').textContent = label;
-        });
+        card.querySelector('#set-sfx').addEventListener('input', (e) => onChange('sfxVolume', Number(e.target.value)));
+        card.querySelector('#set-music').addEventListener('input', (e) => onChange('musicVolume', Number(e.target.value)));
         card.querySelector('#set-tutorial').addEventListener('click', () => {
           close();
           onTutorial();
