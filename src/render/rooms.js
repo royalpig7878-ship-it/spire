@@ -638,14 +638,50 @@ const FURNISH = {
 const SHIRTS = ['#4a90d9', '#e07a5f', '#81b29a', '#f2cc8f', '#9a7fcf', '#d4a373'];
 export const shirtOf = (id) => SHIRTS[Math.abs(id) % SHIRTS.length];
 
-// info: { typeId, def, W, slot, id, hour, seconds, mode, venue }
+// ---- Who does what, where --------------------------------------------------
+//
+// Nobody follows the same script. Every person has their own routine: the day is cut
+// into stretches of a couple of game hours, offset differently for each person, and
+// in each stretch they pick something to do from a short list that depends on the
+// time of day and the kind of room. The pick is repeatable (the same person does the
+// same thing at the same time) but different people do different things.
+
+// [activity, weight]
+const APARTMENT_ROUTINE = {
+  night: [['sleep', 8], ['tv', 1], ['snack', 1]],
+  morning: [['cook', 3], ['snack', 3], ['window', 1.5], ['tv', 2], ['stretch', 1.5], ['phone', 1]],
+  day: [['tv', 2.5], ['read', 2], ['phone', 1.6], ['nap', 1], ['plant', 1], ['dance', 0.9], ['stretch', 1], ['window', 1], ['cook', 1], ['think', 0.6]],
+  evening: [['cook', 2.5], ['tv', 3], ['read', 1.5], ['dance', 1.1], ['phone', 1.3], ['stretch', 1], ['snack', 1], ['plant', 0.5]],
+};
+const HOTEL_ROUTINE = {
+  night: [['sleep', 8], ['tv', 1]],
+  day: [['tv', 3], ['read', 2], ['phone', 2], ['nap', 1.5], ['window', 1.5], ['stretch', 1], ['think', 0.6]],
+};
+const OFFICE_ROUTINE = [['type', 62], ['phone', 9], ['coffee', 8], ['talk', 8], ['stretch', 5], ['think', 4], ['read', 4]];
+const SHOP_ROUTINE = [['browse', 4], ['look', 3], ['reach', 2], ['pay', 1.2], ['phone', 0.6]];
+const GYM_ROUTINE = [['run', 4], ['lift', 3], ['stretch', 1.5]];
+
+function weighted(table, r) {
+  const total = table.reduce((s, [, w]) => s + w, 0);
+  let x = r * total;
+  for (const [name, w] of table) {
+    x -= w;
+    if (x <= 0) return name;
+  }
+  return table[0][0];
+}
+
+// info: { typeId, def, W, slot, id, hour, minutes, seconds, venue }
 // venue is true when the person is visiting (a shop, cinema, gym...), false at their own desk or home.
 // Returns { x, y, pose, flip, scale } in room units.
-export function personSpot({ typeId, def, W, slot, id, hour, seconds, venue }) {
+export function personSpot({ typeId, def, W, slot, id, hour, minutes = 0, seconds, venue }) {
   const kind = def.style ?? typeId;
   const idr = hash(id);
   const phase = seconds + idr * 20;
+  const spread = ((slot % 3) - 1) * 12; // keeps neighbors from standing on each other
+  const turn = (salt) => hash(id * 3.1 + salt) > 0.5; // which way they face
 
+  // ----- visiting a venue -----
   if (venue) {
     switch (typeId) {
       case 'cinema': {
@@ -654,8 +690,11 @@ export function personSpot({ typeId, def, W, slot, id, hour, seconds, venue }) {
         return { x: 26 + seat * 12 + 4.5, y: (row ? 38.5 : 33) + 6.5, pose: 'watch', flip: false, scale: 1 };
       }
       case 'gym': {
-        const t = slot % 2 === 0 ? 16 : 56;
-        return { x: t + 14, y: 40, pose: 'run', flip: false, scale: 1 };
+        const seg = Math.floor(seconds / 30 + idr * 6);
+        const pick = weighted(GYM_ROUTINE, hash(seg * 7.7 + id));
+        if (pick === 'run') return { x: (slot % 2 === 0 ? 16 : 56) + 14, y: 40, pose: 'run', flip: false, scale: 1 };
+        if (pick === 'lift') return { x: W - 80 + (slot % 2) * 14, y: 42, pose: 'lift', flip: turn(seg), scale: 1 };
+        return { x: W * 0.45 + spread, y: 42, pose: 'stretch', flip: turn(seg), scale: 1 };
       }
       case 'clinic':
         return idr < 0.5 ? { x: 36, y: 31, pose: 'lie', flip: false, scale: 1 } : { x: 100 + idr * 20, y: 42, pose: 'sit', flip: true, scale: 1 };
@@ -668,43 +707,96 @@ export function personSpot({ typeId, def, W, slot, id, hour, seconds, venue }) {
         return { x: tx + (left ? -10 : 10), y: 42, pose: 'eat', flip: !left, scale: 1 };
       }
       case 'ballroom': {
-        return { x: 20 + idr * (W - 90), y: 42, pose: 'browse', flip: idr > 0.5, scale: 1 };
+        const seg = Math.floor(seconds / 20 + idr * 5);
+        const dancing = hash(seg * 5.3 + id) < 0.6;
+        return { x: 20 + idr * (W - 90), y: 42, pose: dancing ? 'dance' : 'browse', flip: turn(seg), scale: 1 };
       }
       default: {
-        // shops: browse the shelves, drifting slowly
-        const x = W * 0.1 + (W * 0.6) * (0.5 + 0.5 * Math.sin(phase * 0.15 + idr * 6));
+        // shops: wander, stop to look at a shelf, reach for something, queue at the till
+        const seg = Math.floor(seconds / 14 + idr * 9);
+        const pick = weighted(SHOP_ROUTINE, hash(seg * 3.9 + id));
+        const shelfX = W * (0.12 + 0.5 * hash(seg + id));
+        if (pick === 'look') return { x: shelfX, y: 42, pose: 'think', flip: turn(seg), scale: 1 };
+        if (pick === 'reach') return { x: shelfX, y: 42, pose: 'stretch', flip: turn(seg), scale: 1 };
+        if (pick === 'pay') return { x: W - 42 + (slot % 2) * 11, y: 42, pose: 'talk', flip: false, scale: 1 };
+        if (pick === 'phone') return { x: shelfX, y: 42, pose: 'phone', flip: turn(seg), scale: 1 };
+        const x = W * 0.1 + W * 0.6 * (0.5 + 0.5 * Math.sin(phase * 0.15 + idr * 6));
         return { x, y: 42, pose: 'browse', flip: Math.cos(phase * 0.15 + idr * 6) < 0, scale: 1 };
       }
     }
   }
 
+  // ----- at their desk -----
   if (kind === 'office') {
     const seat = deskSeat(def, W, slot);
-    const cycle = (seconds / 11 + idr) % 1;
-    if (cycle > 0.9 && W > 120) return { x: W - 24, y: FLOOR_Y, pose: 'drink', flip: true, scale: 1 }; // water cooler
-    if (cycle > 0.8) return { x: seat.x + 2, y: seat.y, pose: 'stand', flip: false, scale: seat.scale };
+    const seg = Math.floor(seconds / (8 + idr * 8) + idr * 11);
+    const pick = weighted(OFFICE_ROUTINE, hash(seg * 4.7 + id));
+    const near = { x: seat.x + 2, y: seat.y, scale: seat.scale };
+    if (pick === 'coffee' && W > 120) return { x: W - 24, y: FLOOR_Y, pose: 'drink', flip: true, scale: 1 }; // water cooler
+    if (pick === 'talk') {
+      // wander over to a neighbor's desk for a chat
+      const other = deskSeat(def, W, Math.max(0, Math.min(def.capacity - 1, slot + (turn(seg) ? 1 : -1))));
+      return { x: other.x - 12, y: other.y, pose: 'talk', flip: false, scale: other.scale };
+    }
+    if (pick === 'phone') return { ...near, pose: 'phone', flip: false };
+    if (pick === 'stretch') return { ...near, pose: 'stretch', flip: false };
+    if (pick === 'think') return { ...near, pose: 'think', flip: false };
     return { x: seat.x, y: seat.y, pose: 'type', flip: false, scale: seat.scale };
   }
 
+  // ----- at home or in a hotel room -----
   if (kind === 'apartment' || kind === 'hotel') {
     const compact = W < 100;
-    const bedW = Math.min(kind === 'hotel' ? 44 : 40, W * (kind === 'hotel' ? 0.5 : 0.38));
-    const bedPillow = (kind === 'hotel' ? 6 : 5) + bedW * 0.55;
-    const sofaX = W * (compact ? 0.47 : kind === 'hotel' ? 0.45 : 0.44) + 10 + (slot % 3) * 11;
-    const kitchenX = W * (compact ? 0.78 : 0.76) + 6 + (slot % 3) * 9;
-    const night = hour >= 22.5 || hour < 6.5;
-    if (night && slot === 0) return { x: bedPillow, y: 34, pose: 'sleep', flip: false, scale: 1 };
-    // deep night: a second person falls asleep on the sofa
-    if (kind === 'apartment' && slot === 1 && (hour >= 23.5 || hour < 6)) return { x: W * (compact ? 0.47 : 0.44) + 14, y: 36, pose: 'sleep', flip: false, scale: 1 };
-    if (kind === 'hotel') {
-      return { x: sofaX - 6, y: 42, pose: 'tv', flip: false, scale: 1 };
+    const isHotel = kind === 'hotel';
+    const bedW = Math.min(isHotel ? 44 : 40, W * (isHotel ? 0.5 : 0.38));
+    const pillowX = (isHotel ? 6 : 5) + bedW * 0.55;
+    const sofaStart = W * (compact ? 0.47 : isHotel ? 0.45 : 0.44);
+    const hasSofa = !isHotel || W >= 150;
+    const sit = (n) => (hasSofa ? { x: sofaStart + 10 + (n % 3) * 11, y: 42 } : { x: 4 + bedW - 6 - (n % 2) * 10, y: 33 }); // on the sofa, or the edge of the bed
+    const kitchenX = W * (compact ? 0.78 : 0.76);
+    const windowX = isHotel ? W * 0.5 : 24;
+    const seg = Math.floor(minutes / 110 + idr * 9);
+    const band = hour >= 23 || hour < 6.5 ? 'night' : hour < 9 ? 'morning' : hour < 17 ? 'day' : hour < 22.5 ? 'evening' : 'night';
+    let pick = weighted(isHotel ? HOTEL_ROUTINE[band === 'night' ? 'night' : 'day'] : APARTMENT_ROUTINE[band], hash(seg * 5.1 + id));
+    if (isHotel && pick === 'cook') pick = 'tv';
+    if (pick === 'plant' && W < 160) pick = 'stretch'; // only the bigger apartments have a plant
+    // one bed per room: only the first person sleeps in it; a second sleeper takes the sofa
+    if (pick === 'sleep' && slot === 1 && hasSofa && !isHotel) return { x: sofaStart + 14, y: 36, pose: 'sleep', flip: false, scale: 1 };
+    if (pick === 'sleep' && slot >= 2) pick = 'snack';
+    if (pick === 'sleep' && slot === 1 && !hasSofa) pick = 'tv';
+    if (pick === 'sleep' && slot === 0) return { x: pillowX, y: 34, pose: 'sleep', flip: false, scale: 1 };
+    switch (pick) {
+      case 'nap': {
+        if (slot === 0 && !hasSofa) return { x: pillowX, y: 34, pose: 'sleep', flip: false, scale: 1 };
+        return { x: sofaStart + 14, y: 36, pose: 'sleep', flip: false, scale: 1 };
+      }
+      case 'tv': {
+        const s = sit(slot);
+        return { x: s.x, y: s.y, pose: 'tv', flip: false, scale: 1 };
+      }
+      case 'read': {
+        const s = sit(slot + 1);
+        return { x: s.x, y: s.y, pose: 'read', flip: false, scale: 1 };
+      }
+      case 'cook':
+        return { x: kitchenX + 6 + (slot % 3) * 9, y: 42, pose: 'cook', flip: false, scale: 1 };
+      case 'snack':
+        return { x: kitchenX + 10 + (slot % 3) * 8, y: 42, pose: 'drink', flip: true, scale: 1 };
+      case 'window':
+        return { x: windowX + spread * 0.6, y: 42, pose: 'stand', flip: turn(seg), scale: 1 };
+      case 'plant':
+        return { x: W * 0.34 - 12, y: 42, pose: 'water', flip: false, scale: 1 };
+      case 'dance':
+        return { x: W * 0.5 + spread, y: 42, pose: 'dance', flip: turn(seg), scale: 1 };
+      case 'phone': {
+        const x = W * 0.5 + Math.sin(phase * 0.25 + idr * 6) * W * 0.18;
+        return { x, y: 42, pose: 'phone', flip: Math.cos(phase * 0.25 + idr * 6) < 0, scale: 1 };
+      }
+      case 'think':
+        return { x: W * 0.5 + spread, y: 42, pose: 'think', flip: turn(seg), scale: 1 };
+      default:
+        return { x: W * 0.46 + spread, y: 42, pose: 'stretch', flip: turn(seg), scale: 1 };
     }
-    const mealtime = (hour >= 6.5 && hour < 8.5) || (hour >= 17 && hour < 19.5);
-    if (mealtime) {
-      if (slot === 0) return { x: kitchenX, y: 42, pose: 'cook', flip: false, scale: 1 };
-      if (slot === 1) return { x: kitchenX + 6, y: 42, pose: 'drink', flip: true, scale: 1 };
-    }
-    return { x: sofaX, y: 42, pose: 'tv', flip: false, scale: 1 };
   }
 
   return { x: W * (0.2 + 0.6 * idr), y: 42, pose: 'stand', flip: idr > 0.5, scale: 1 };

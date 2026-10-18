@@ -270,7 +270,7 @@ export function renderWorld(ctx, W, H, camera, config, game, ui, alpha) {
   if (ui.overlay !== 'off') drawOverlay(ctx, W, H, camera, config, game, ui.overlay);
 
   // --- People walking, climbing, relaxing at their desks ---
-  drawTenants(ctx, W, H, camera, config, tenants, ui.storyId, rich, cutaway ? { tower, hour } : null);
+  drawTenants(ctx, W, H, camera, config, tenants, ui.storyId, rich, cutaway ? { tower, hour, minutes: game.clock.minutes } : null);
 
   // --- Elevator cars, call buttons and waiting riders ---
   drawElevators(ctx, W, H, camera, config, elevators, alpha, rich);

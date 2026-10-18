@@ -82,6 +82,17 @@ milestone, once you've confirmed it works — never before.
 
 ## Milestone log
 
+- **Varied people** (after M10): nobody follows the same script any more.
+  Each person has their own routine: the day is cut into stretches that are
+  offset differently for everyone, and in each stretch they pick something
+  from a weighted list that depends on the time and the room. Homes: sleep,
+  cook, snack, TV, read, phone calls (pacing), nap on the sofa, stretch,
+  dance, water the plant, look out of the window. Offices: mostly typing,
+  plus phone calls, coffee, chatting at a neighbour's desk, stretching,
+  thinking. Shops, gym and ballroom have their own mixes (browse, look,
+  reach, pay, lift weights, dance). The code is `personSpot` in
+  `src/render/rooms.js`, and the new animations are in `src/render/poses.js`.
+
 - **Recorded sounds** (after M10): the game's building, demolish, money,
   warning and level-up sounds, plus birds and distant street noises, now use
   recordings from the **Ovani Sound "Building Tycoon Sound FX Pack"** that you

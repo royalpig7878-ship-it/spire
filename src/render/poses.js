@@ -148,6 +148,106 @@ export function drawPose(ctx, pose, x, y, scale, flip, phase, c) {
       head(ctx, 0.6, -25.5 - bob, c.skin, c.hair);
       break;
     }
+    case 'read': {
+      // sitting without a chair (sofa or bed edge), holding up a book
+      limb(ctx, -1, -9, 7, -9, 3.2, PANTS);
+      limb(ctx, 7, -9, 7, -0.5, 3, PANTS);
+      roundBox(ctx, -4.5, -21, 9, 12.5, 3, c.shirt);
+      limb(ctx, 2, -18, 7, -15, 2.4, c.shirt);
+      roundBox(ctx, 6, -20, 5, 7, 0.8, '#b5483f'); // the book
+      ctx.fillStyle = '#f4efe4';
+      ctx.fillRect(6.6, -19.4, 3.8, 5.8);
+      head(ctx, 1, -25.5 + Math.sin(phase * 0.8) * 0.4, c.skin, c.hair);
+      break;
+    }
+    case 'phone': {
+      // talking on the phone, swaying a little
+      const sway = Math.sin(phase * 1.5);
+      limb(ctx, -1.4, -10, -1.4 + sway * 1.2, 0, 3, PANTS);
+      limb(ctx, 1.4, -10, 1.4 - sway * 1.2, 0, 3, PANTS);
+      roundBox(ctx, -4.5, -21, 9, 12, 3, c.shirt);
+      limb(ctx, 2, -18, 5, -24, 2.4, c.shirt);
+      roundBox(ctx, 4.2, -28, 2.2, 4, 0.6, '#222a33'); // the phone
+      limb(ctx, -2, -18, -4.5, -11, 2.4, c.shirt);
+      head(ctx, 0.4, -25.5, c.skin, c.hair);
+      break;
+    }
+    case 'stretch': {
+      // arms reaching up, then relaxing
+      const k = (Math.sin(phase * 1.2) + 1) / 2;
+      limb(ctx, -1.4, -10, -2, 0, 3, PANTS);
+      limb(ctx, 1.4, -10, 2, 0, 3, PANTS);
+      roundBox(ctx, -4.5, -21, 9, 12, 3, c.shirt);
+      limb(ctx, 3, -19, 4 + k * 2, -19 - k * 11, 2.4, c.shirt);
+      limb(ctx, -3, -19, -4 - k * 2, -19 - k * 11, 2.4, c.shirt);
+      head(ctx, 0, -25.5 - k * 0.8, c.skin, c.hair);
+      break;
+    }
+    case 'dance': {
+      // bouncing to a beat, arms swinging
+      const b = Math.sin(phase * 6);
+      const bob = Math.abs(b) * 1.8;
+      limb(ctx, -1.4, -10 - bob, -2.5 + b * 1.5, 0, 3, PANTS);
+      limb(ctx, 1.4, -10 - bob, 2.5 + b * 1.5, 0, 3, PANTS);
+      roundBox(ctx, -4.5 + b * 0.6, -21 - bob, 9, 12, 3, c.shirt);
+      limb(ctx, 3, -19 - bob, 7, -25 - b * 4 - bob, 2.4, c.shirt);
+      limb(ctx, -3, -19 - bob, -7, -25 + b * 4 - bob, 2.4, c.shirt);
+      head(ctx, b * 0.8, -25.5 - bob, c.skin, c.hair);
+      break;
+    }
+    case 'talk': {
+      // chatting: one hand gesturing, head nodding
+      const g = Math.sin(phase * 3.5);
+      limb(ctx, -1.2, -10, -1.8, 0, 3, PANTS);
+      limb(ctx, 1.2, -10, 1.8, 0, 3, PANTS);
+      roundBox(ctx, -4.5, -21, 9, 12, 3, c.shirt);
+      limb(ctx, 3, -18, 8 + g * 2, -16 + Math.cos(phase * 2.3) * 2.5, 2.4, c.shirt);
+      limb(ctx, -3, -18, -4.5, -11, 2.4, c.shirt);
+      head(ctx, 0.5, -25.5 + Math.abs(Math.sin(phase * 2)) * 0.6, c.skin, c.hair);
+      break;
+    }
+    case 'lift': {
+      // curling a dumbbell with each arm in turn
+      const up = (Math.sin(phase * 2.2) + 1) / 2;
+      const up2 = (Math.sin(phase * 2.2 + Math.PI) + 1) / 2;
+      limb(ctx, -1.8, -10, -3, 0, 3, PANTS);
+      limb(ctx, 1.8, -10, 3, 0, 3, PANTS);
+      roundBox(ctx, -4.5, -21, 9, 12, 3, c.shirt);
+      limb(ctx, 4, -19, 7, -12 - up * 7, 2.4, c.shirt);
+      limb(ctx, -4, -19, -7, -12 - up2 * 7, 2.4, c.shirt);
+      for (const [hx, hy] of [[7, -12 - up * 7], [-7, -12 - up2 * 7]]) {
+        ctx.fillStyle = '#2b2f36';
+        ctx.fillRect(hx - 2.6, hy - 1, 5.2, 2);
+        ctx.fillRect(hx - 3, hy - 1.8, 1.4, 3.6);
+        ctx.fillRect(hx + 1.6, hy - 1.8, 1.4, 3.6);
+      }
+      head(ctx, 0, -25.5, c.skin, c.hair);
+      break;
+    }
+    case 'water': {
+      // watering a plant with a little can
+      limb(ctx, -1.4, -10, -2, 0, 3, PANTS);
+      limb(ctx, 1.4, -10, 2, 0, 3, PANTS);
+      roundBox(ctx, -4.5, -21, 9, 12, 3, c.shirt);
+      limb(ctx, 3, -18, 9, -15, 2.4, c.shirt);
+      roundBox(ctx, 8, -18, 6, 5, 1, '#4a8f6a'); // the can
+      limb(ctx, 13, -16, 16, -18, 1.4, '#4a8f6a');
+      ctx.fillStyle = 'rgba(140,200,255,0.8)';
+      for (let i = 0; i < 3; i++) ctx.fillRect(16.5 + (i % 2) * 0.8, -17 + ((phase * 14 + i * 3) % 9), 0.9, 1.8);
+      limb(ctx, -3, -18, -4.5, -11, 2.4, c.shirt);
+      head(ctx, 0.8, -25.5, c.skin, c.hair);
+      break;
+    }
+    case 'think': {
+      // a hand on the chin, thinking it over
+      limb(ctx, -1.4, -10, -2, 0, 3, PANTS);
+      limb(ctx, 1.4, -10, 2, 0, 3, PANTS);
+      roundBox(ctx, -4.5, -21, 9, 12, 3, c.shirt);
+      limb(ctx, -3, -18, 1, -17, 2.4, c.shirt);
+      limb(ctx, 1, -17, 2.2, -23, 2.2, c.shirt);
+      head(ctx, 0.5, -25.5 + Math.sin(phase * 0.9) * 0.4, c.skin, c.hair);
+      break;
+    }
     case 'browse':
     case 'stand':
     default: {

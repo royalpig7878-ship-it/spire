@@ -135,7 +135,7 @@ function drawInRoom(ctx, t, config, cutaway, camera, W, H, seconds, floorPx) {
   const top = (-(f.floor + 1) * floorHeight - camera.y) * zoom + H / 2;
   if (x > W || x + f.width * cellWidth * zoom < 0 || top > H || top + floorPx < 0) return true;
   const g = roomGeom(x, top, f.width * cellWidth * zoom, floorPx);
-  const spot = personSpot({ typeId: f.type, def, W: g.W, slot: t.slot ?? 0, id: t.id, hour: cutaway.hour, seconds, venue });
+  const spot = personSpot({ typeId: f.type, def, W: g.W, slot: t.slot ?? 0, id: t.id, hour: cutaway.hour, minutes: cutaway.minutes, seconds, venue });
   const mood = moodOfStress(t.stress, config.tenants.stress);
   drawPose(
     ctx,
