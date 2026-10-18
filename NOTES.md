@@ -109,8 +109,8 @@ milestone, once you've confirmed it works — never before.
   roots, worms, bones, fossils, old pipes, gems, gold, coins, bottles,
   treasure chests (deep down) and a mole that pops up now and then.
   **Sound on iPhone:** the silent switch mutes web audio, so the game plays a
-  silent looping clip to count as media. Settings > **Test sound** plays a
-  chime and reports whether the browser is blocking audio.
+  silent looping clip to count as media. Settings has separate **Sound
+  effects** and **Music** volume bars (all the way left is off).
   **Rent is now paid every day** (a sixth of the quarter's rent each midnight,
   by how full each unit was), so money comes in as steadily as bills go out;
   the quarterly report is a summary. **Finances:** tap your funds at the top (or Menu > Finances) any time to
